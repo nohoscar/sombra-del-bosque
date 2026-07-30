@@ -122,9 +122,15 @@ const TDLevel = {
       return { ...this.center(s.c, s.r), tile: s, collected: false, kind: TD_NOTES[i].kind, title: TD_NOTES[i].title, text: TD_NOTES[i].text };
     });
 
-    const gen = { c: Math.floor(C * 0.5), r: Math.floor(R * 0.5) };
-    this._clearRadius(gen.c, gen.r, 1);
-    this.generators = [{ ...this.center(gen.c, gen.r), tile: gen, active: false }];
+    const genSpots = [
+      { c: Math.floor(C * 0.28), r: Math.floor(R * 0.55) },
+      { c: Math.floor(C * 0.52), r: Math.floor(R * 0.32) },
+      { c: Math.floor(C * 0.72), r: Math.floor(R * 0.62) },
+    ];
+    this.generators = genSpots.map((s) => {
+      this._clearRadius(s.c, s.r, 1);
+      return { ...this.center(s.c, s.r), tile: s, active: false, timer: 0, radius: 185 };
+    });
 
     this._clearRadius(exitC, exitR, 1);
 
@@ -136,8 +142,8 @@ const TDLevel = {
     // Garantiza acceso: corredores desde el inicio a cada objetivo
     const startTile = { c: 3, r: 3 };
     this.notes.forEach((n) => this._carve(startTile.c, startTile.r, n.tile.c, n.tile.r));
-    this._carve(startTile.c, startTile.r, gen.c, gen.r);
-    this._carve(gen.c, gen.r, exitC, exitR);
+    this.generators.forEach((g) => this._carve(startTile.c, startTile.r, g.tile.c, g.tile.r));
+    this._carve(startTile.c, startTile.r, exitC, exitR);
 
     // Arbustos (escondites) en piso libre
     this.bushes = new Set();
@@ -159,9 +165,9 @@ const TDLevel = {
   },
 
   canExit() {
+    // La salida ahora solo depende de reunir las notas.
     const pagesLeft = this.notes.filter((n) => !n.collected).length;
-    const gensOff = this.generators.filter((g) => !g.active).length;
-    return { ok: pagesLeft === 0 && gensOff === 0, pagesLeft, gensOff };
+    return { ok: pagesLeft === 0, pagesLeft };
   },
 };
 

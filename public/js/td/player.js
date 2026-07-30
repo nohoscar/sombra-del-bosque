@@ -62,7 +62,7 @@ class TDPlayer {
     if (Input.wasPressed("flashlight") && (this.battery > 0 || this.flashlight)) this.flashlight = !this.flashlight;
     if (this.flashlight) {
       const drain = (typeof Difficulty !== "undefined") ? Difficulty.get().batteryDrain : 1;
-      this.battery = Math.max(0, this.battery - 8 * drain * dt);
+      this.battery = Math.max(0, this.battery - 5 * drain * dt);
       if (this.battery <= 0) this.flashlight = false;
     }
 

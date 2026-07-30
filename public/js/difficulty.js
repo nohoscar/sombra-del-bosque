@@ -12,6 +12,8 @@ const Difficulty = {
       batteryDrain: 0.6, // consumo de linterna
       batteryBonus: 1,   // pilas extra por nivel
       fearMul: 0.7,
+      genCharges: 3,     // usos de generadores (zonas de luz)
+      litDuration: 11,   // segundos que dura encendido
     },
     normal: {
       label: "NORMAL",
@@ -22,6 +24,8 @@ const Difficulty = {
       batteryDrain: 1.0,
       batteryBonus: 0,
       fearMul: 1.0,
+      genCharges: 2,
+      litDuration: 9,
     },
     dificil: {
       label: "DIFICIL",
@@ -32,6 +36,8 @@ const Difficulty = {
       batteryDrain: 1.35,
       batteryBonus: -1,
       fearMul: 1.3,
+      genCharges: 1,
+      litDuration: 7,
     },
   },
 

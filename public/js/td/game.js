@@ -27,6 +27,7 @@ class TDGame {
     this.slender = new TDSlender({});
     this.static = 0; this.corruption = 0;
     this._lastFoot = 0;
+    this.genCharges = (typeof Difficulty !== "undefined") ? Difficulty.get().genCharges : 2;
     Sound.startAmbience();
     this.state = "playing";
   }
@@ -37,6 +38,15 @@ class TDGame {
     p.corruption = this.corruption;
     p.update(dt);
     s.update(dt, p);
+
+    // Generadores encendidos: cuentan su tiempo y ahuyentan al Esbelto
+    for (const g of TDLevel.generators) {
+      if (g.active) {
+        g.timer -= dt;
+        if (g.timer <= 0) { g.active = false; g.timer = 0; }
+        else if (Math.hypot(s.x - g.x, s.y - g.y) < g.radius) s.fleeFrom(g.x, g.y, dt);
+      }
+    }
 
     // --- Estática (mirar al Esbelto) ---
     let rise = 0;
@@ -98,19 +108,27 @@ class TDGame {
         this._emit("note", { kind: nearNote.kind, title: nearNote.title, text: nearNote.text });
       }
     }
-    // Generador
+    // Generadores: zona de luz temporal que ahuyenta al Esbelto (usos limitados)
     for (const g of TDLevel.generators) {
-      if (!g.active && Math.hypot(p.x - g.x, p.y - g.y) < 38) {
-        this._notify("E: activar generador");
-        if (Input.wasPressed("interact")) { g.active = true; this._notify("Generador encendido"); }
+      if (Math.hypot(p.x - g.x, p.y - g.y) >= 40) continue;
+      if (g.active) { this._notify(`Foco activo (${Math.ceil(g.timer)}s)`); continue; }
+      if (this.genCharges > 0) {
+        this._notify(`E: encender foco  (${this.genCharges} usos)`);
+        if (Input.wasPressed("interact")) {
+          g.active = true;
+          g.timer = (typeof Difficulty !== "undefined") ? Difficulty.get().litDuration : 9;
+          this.genCharges--;
+          this._notify("Foco encendido: zona segura");
+        }
+      } else {
+        this._notify("Sin cargas de generador");
       }
     }
-    // Salida
+    // Salida (solo requiere las notas)
     const e = TDLevel.exit;
     if (Math.hypot(p.x - e.x, p.y - e.y) < 40) {
       const st = TDLevel.canExit();
-      if (st.gensOff > 0) this._notify(`Falta activar ${st.gensOff} generador`);
-      else if (st.pagesLeft > 0) this._notify(`Faltan ${st.pagesLeft} nota(s)`);
+      if (st.pagesLeft > 0) this._notify(`Faltan ${st.pagesLeft} nota(s)`);
       else { this._notify("E: escapar"); if (Input.wasPressed("interact")) this._win(); }
     }
   }
@@ -162,6 +180,16 @@ class TDGame {
           ctx.beginPath(); ctx.ellipse(x + T * 0.38, y + T * 0.42, T * 0.22, T * 0.18, 0, 0, Math.PI * 2); ctx.fill();
         }
       }
+    }
+    // Charco de luz cálida de los focos encendidos (en el piso)
+    for (const g of TDLevel.generators) {
+      if (!g.active) continue;
+      const pulse = 0.14 + Math.sin(Date.now() / 200) * 0.03;
+      const grad = ctx.createRadialGradient(g.x, g.y, 20, g.x, g.y, g.radius);
+      grad.addColorStop(0, `rgba(255,225,150,${pulse + 0.1})`);
+      grad.addColorStop(1, "rgba(255,225,150,0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(g.x, g.y, g.radius, 0, Math.PI * 2); ctx.fill();
     }
   }
 
@@ -246,7 +274,7 @@ class TDGame {
   }
 
   _drawExit(ctx) {
-    const e = TDLevel.exit, powered = TDLevel.canExit().gensOff === 0;
+    const e = TDLevel.exit, powered = TDLevel.canExit().pagesLeft === 0;
     const y = e.y - 8;
     ctx.fillStyle = "rgba(0,0,0,0.4)";
     ctx.beginPath(); ctx.ellipse(e.x, e.y + 24, 26, 8, 0, 0, Math.PI * 2); ctx.fill();
@@ -289,6 +317,17 @@ class TDGame {
       lx.fillStyle = cone; lx.fillRect(0, 0, W, H);
       lx.restore();
     }
+
+    // Focos encendidos: revelan su zona segura
+    for (const g of TDLevel.generators) {
+      if (!g.active) continue;
+      const gx = g.x - this.camX, gy = g.y - this.camY;
+      const gg = lx.createRadialGradient(gx, gy, 12, gx, gy, g.radius);
+      gg.addColorStop(0, "rgba(0,0,0,1)"); gg.addColorStop(0.75, "rgba(0,0,0,0.7)"); gg.addColorStop(1, "rgba(0,0,0,0)");
+      lx.fillStyle = gg;
+      lx.beginPath(); lx.arc(gx, gy, g.radius, 0, Math.PI * 2); lx.fill();
+    }
+
     lx.globalCompositeOperation = "source-over";
     ctx.drawImage(this.lightCanvas, 0, 0);
 
@@ -329,9 +368,8 @@ class TDGame {
 
     ctx.fillStyle = "#dfe6df"; ctx.font = "16px 'Trebuchet MS', sans-serif"; ctx.textAlign = "right";
     const got = TDLevel.notes.filter((n) => n.collected).length;
-    const on = TDLevel.generators.filter((g) => g.active).length;
     ctx.fillText(`Notas: ${got}/${TDLevel.notes.length}`, this.W - 20, 32);
-    ctx.fillText(`Generadores: ${on}/${TDLevel.generators.length}`, this.W - 20, 54);
+    ctx.fillText(`Focos: ${this.genCharges}`, this.W - 20, 54);
     ctx.fillText(`Linterna: ${this.player.flashlight ? "ON" : "OFF"}`, this.W - 20, 76);
     ctx.textAlign = "left";
 

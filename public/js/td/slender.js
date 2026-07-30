@@ -124,6 +124,16 @@ class TDSlender {
     this.detection = Math.max(0, Math.min(100, this.detection));
   }
 
+  // Ahuyentado por una zona de luz: huye del foco y no puede atrapar
+  fleeFrom(gx, gy, dt) {
+    const dx = this.x - gx, dy = this.y - gy;
+    const d = Math.hypot(dx, dy) || 1;
+    this._moveToward(this.x + dx / d * 120, this.y + dy / d * 120, this.speed * 1.7, dt);
+    this.detection = Math.max(0, this.detection - 80 * dt);
+    if (this.detection < 25 && this.state === "chase") { this.state = "patrol"; this.wp = this._nearestWaypoint(); }
+    this.caught = false;
+  }
+
   _nearestWaypoint() {
     let best = 0, bd = Infinity;
     this.waypoints.forEach((w, i) => {
