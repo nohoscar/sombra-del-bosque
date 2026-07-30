@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sombra del Bosque</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game" width="1024" height="576"></canvas>
+
+    <!-- Pantalla de inicio -->
+    <div id="start-screen" class="overlay">
+      <h1>SOMBRA DEL BOSQUE</h1>
+      <p class="subtitle">Las 8 Noches</p>
+      <p class="story">
+        Tu hermano menor desapareci&oacute; en el bosque de Willow Creek.
+        Nadie del pueblo se atreve a entrar. T&uacute; s&iacute;.
+        Solo tienes una linterna... y no est&aacute;s solo.
+      </p>
+      <div class="controls-help">
+        <p><b>&larr; &rarr; / A D</b> &mdash; Moverse</p>
+        <p><b>SHIFT</b> &mdash; Correr (hace ruido)</p>
+        <p><b>&darr; / S / CTRL</b> &mdash; Agacharse / esconderte en arbustos</p>
+        <p><b>ESPACIO / W</b> &mdash; Saltar</p>
+        <p><b>E</b> &mdash; Interactuar (p&aacute;ginas, generador, puerta)</p>
+        <p><b>Q</b> &mdash; Lanzar piedra (distracci&oacute;n)</p>
+        <p><b>F</b> &mdash; Linterna (gasta bater&iacute;a y te delata)</p>
+        <p><b>Bater&iacute;as</b> &mdash; Recoge pilas para la linterna</p>
+        <p><b>M</b> &mdash; Silenciar / activar sonido</p>
+        <p><b>Objetivo</b> &mdash; Notas + generadores, luego escapa</p>
+      </div>
+      <div class="difficulty-select">
+        <p class="diff-title">DIFICULTAD</p>
+        <div class="diff-options">
+          <button class="diff-btn" data-diff="facil">F&Aacute;CIL</button>
+          <button class="diff-btn active" data-diff="normal">NORMAL</button>
+          <button class="diff-btn" data-diff="dificil">DIF&Iacute;CIL</button>
+        </div>
+        <p class="diff-desc" id="diff-desc"></p>
+      </div>
+      <div class="btn-row">
+        <button id="continue-btn" class="hidden">CONTINUAR</button>
+        <button id="start-btn">NUEVA PARTIDA</button>
+      </div>
+    </div>
+
+    <!-- Pantalla de intro/transici&oacute;n de noche -->
+    <div id="night-screen" class="overlay hidden">
+      <p class="subtitle" id="night-label">NOCHE 1</p>
+      <h1 id="night-title">La Entrada</h1>
+      <p class="story" id="night-text"></p>
+      <button id="night-btn">COMENZAR</button>
+    </div>
+
+    <!-- Pantalla de derrota -->
+    <div id="gameover-screen" class="overlay hidden">
+      <h1 class="danger">TE ATRAP&Oacute;</h1>
+      <p class="story" id="gameover-text">El bosque te reclam&oacute;, como a los dem&aacute;s.</p>
+      <button id="retry-btn">REINTENTAR LA NOCHE</button>
+    </div>
+
+    <!-- Pantalla de victoria final -->
+    <div id="win-screen" class="overlay hidden">
+      <h1 class="win">AMANECER</h1>
+      <p class="story" id="win-text"></p>
+      <button id="win-btn">JUGAR OTRA VEZ</button>
+    </div>
+
+    <!-- Documento encontrado (historia cr&iacute;ptica) -->
+    <div id="note-screen" class="overlay hidden">
+      <div class="note-paper" id="note-paper">
+        <p class="note-source" id="note-title"></p>
+        <p id="note-text"></p>
+        <button id="note-btn">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Motor del juego (sin build, orden importa) -->
+  <script src="js/input.js"></script>
+  <script src="js/difficulty.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/level.js"></script>
+  <script src="js/effects.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/slender.js"></script>
+  <script src="js/cinematic.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
