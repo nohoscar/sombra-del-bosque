@@ -41,7 +41,9 @@ class Game {
     this.rocks = [];
     this.camX = 0;
     this.shake = 0;
+    this._lastFoot = 0;
     FX.init(this.W, this.H);
+    Sound.startAmbience();
     this.state = "playing";
   }
 
@@ -102,6 +104,16 @@ class Game {
     // Nivel de corrupción (0..1): empieza a manifestarse pasada la mitad
     this.corruption = Math.max(0, Math.min(1, (this.fear.value - 55) / 45));
     this.player.corruption = this.corruption;
+
+    // --- Audio ---
+    Sound.update(dt);
+    Sound.setStatic(this.fear.value / 100);
+    Sound.setTension(Math.min(1, this.fear.value / 100 + (anyChase ? 0.35 : 0)));
+    // Pasos: dispara al alternar la fase de caminado en el suelo
+    if (this.player.onGround && Math.abs(this.player.vx) > 5) {
+      const foot = Math.floor(this.player.walkCycle / Math.PI);
+      if (foot !== this._lastFoot) { Sound.footstep(this.player.running); this._lastFoot = foot; }
+    }
 
     this._updateRocks(dt);
     this._updateCamera();
@@ -211,10 +223,14 @@ class Game {
 
   _lose() {
     this.state = "gameover";
+    Sound.stinger();
+    Sound.stopReading();
+    Sound.stopAmbience();
     this._emit("gameover", { night: Level.current + 1 });
   }
 
   _winNight() {
+    Sound.stopAmbience();
     if (Level.current + 1 < Level.totalNights) {
       this.state = "nightcomplete";
       this._emit("nightcomplete", { completed: Level.current + 1 });

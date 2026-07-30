@@ -1,0 +1,11 @@
+{
+  "name": "sombra-del-bosque",
+  "version": "1.0.0",
+  "description": "Juego de sigilo y terror 2D en el navegador. Busca a tu hermano en el bosque de Willow Creek evitando al Esbelto.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "serve": "node tools/serve.mjs",
+    "generate-audio": "node tools/generate-audio.mjs"
+  }
+}

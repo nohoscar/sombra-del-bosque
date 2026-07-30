@@ -25,6 +25,36 @@ window.addEventListener("load", () => {
   const show = (el) => el.classList.remove("hidden");
   const hide = (el) => el.classList.add("hidden");
 
+  // --- Audio: se inicializa con el primer gesto del usuario (autoplay policy) ---
+  const initAudioOnce = () => {
+    Sound.init();
+    Sound.resume();
+    window.removeEventListener("pointerdown", initAudioOnce);
+    window.removeEventListener("keydown", initAudioOnce);
+  };
+  window.addEventListener("pointerdown", initAudioOnce);
+  window.addEventListener("keydown", initAudioOnce);
+
+  // Efecto de "lectura" letra por letra para las notas
+  let typeTimer = null;
+  let noteTyping = false;
+  const typeNote = (el, text) => {
+    clearInterval(typeTimer);
+    el.textContent = "";
+    noteTyping = true;
+    let i = 0;
+    typeTimer = setInterval(() => {
+      if (i < text.length) {
+        el.textContent += text[i++];
+        if (i % 2 === 0) Sound.readTick();
+      } else {
+        clearInterval(typeTimer);
+        noteTyping = false;
+      }
+    }, 26);
+  };
+  const finishNote = (el, text) => { clearInterval(typeTimer); el.textContent = text; noteTyping = false; };
+
   // --- Selector de dificultad ---
   const diffBtns = document.querySelectorAll(".diff-btn");
   const diffDesc = document.getElementById("diff-desc");
@@ -81,13 +111,16 @@ window.addEventListener("load", () => {
     diario: "DIARIO", policial: "REPORTE", grabacion: "GRABACION",
     dibujo: "DIBUJO", cripta: "INSCRIPCION", aviso: "CARTEL",
   };
+  let currentNoteText = "";
   game.on("note", (doc) => {
     const kind = doc.kind || "diario";
     notePaper.className = "note-paper note-" + kind;
     const label = KIND_LABEL[kind] || "";
     noteTitle.textContent = (label ? label + "  \u2014  " : "") + (doc.title || "");
-    noteText.textContent = doc.text;
+    currentNoteText = doc.text;
     show(noteScreen);
+    typeNote(noteText, doc.text);   // se "lee" letra por letra
+    Sound.startReading();           // susurro ininteligible de fondo
   });
 
   game.on("nightcomplete", (data) => {
@@ -140,7 +173,13 @@ window.addEventListener("load", () => {
     show(startScreen);
   });
   document.getElementById("note-btn").addEventListener("click", () => {
+    if (noteTyping) {
+      // Primer clic: revela el texto completo de inmediato
+      finishNote(noteText, currentNoteText);
+      return;
+    }
     hide(noteScreen);
+    Sound.stopReading();
     game.resumeFromNote();
   });
 
@@ -148,6 +187,7 @@ window.addEventListener("load", () => {
   canvas.addEventListener("click", () => { if (Cinematic.active) Cinematic.advance(); });
   window.addEventListener("keydown", (e) => {
     if (Cinematic.active && e.code === "Escape") Cinematic.skipAll();
+    if (e.code === "KeyM") Sound.toggleMute();
   });
 
   // Bucle principal con delta-time
