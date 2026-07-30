@@ -5,8 +5,9 @@ class TDPlayer {
   reset() {
     this.x = TDLevel.start.x;
     this.y = TDLevel.start.y;
-    this.r = 13;
+    this.r = 18;
     this.fx = 1; this.fy = 0;     // dirección a la que mira
+    this.side = 1;                // 1 der, -1 izq (para dibujar de pie)
     this.stamina = 100;
     this.running = false;
     this.hidden = false;
@@ -50,6 +51,7 @@ class TDPlayer {
     if (this.moving) {
       ix /= mag; iy /= mag;
       this.fx = ix; this.fy = iy;
+      if (Math.abs(ix) > 0.15) this.side = ix > 0 ? 1 : -1;
     }
 
     // Stamina
@@ -86,28 +88,48 @@ class TDPlayer {
 
   addBattery(a) { this.battery = Math.min(100, this.battery + a); }
 
+  // Dibujo en perspectiva 3/4: figura de pie, anclada por los pies en (x, y+14)
   draw(ctx) {
-    const x = this.x, y = this.y;
+    const x = Math.round(this.x), y = Math.round(this.y);
+    const s = this.side;
+    const step = Math.sin(this.walkPhase) * 3;
+
     ctx.save();
-    if (this.hidden) ctx.globalAlpha = 0.4;
+    if (this.hidden) ctx.globalAlpha = 0.45;
 
-    // Sombra
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.beginPath(); ctx.ellipse(x, y + 10, this.r, this.r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+    // Sombra en el piso
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath(); ctx.ellipse(x, y + 15, 15, 6, 0, 0, Math.PI * 2); ctx.fill();
 
-    // Cuerpo (hoodie verde), visto desde arriba
-    const bob = Math.sin(this.walkPhase) * 1.5;
+    // Piernas (jeans) con paso
+    ctx.fillStyle = "#274574";
+    ctx.fillRect(x - 7, y + 2, 6, 13 + step);
+    ctx.fillRect(x + 1, y + 2, 6, 13 - step);
+    // Zapatillas rojas
+    ctx.fillStyle = "#c23a3a";
+    ctx.fillRect(x - 8, y + 13 + step, 8, 4);
+    ctx.fillRect(x + 1, y + 13 - step, 8, 4);
+
+    // Torso (hoodie verde)
     ctx.fillStyle = "#2f7d43";
-    ctx.beginPath(); ctx.arc(x, y + bob, this.r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(x - 9, y - 14, 18, 18);
     ctx.fillStyle = "#256b38";
-    ctx.beginPath(); ctx.arc(x, y + bob, this.r * 0.7, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(x - 6, y - 10, 12, 13);
+    // Brazos
+    ctx.fillStyle = "#2f7d43";
+    ctx.fillRect(x - 12, y - 12, 4, 14);
+    ctx.fillRect(x + 8, y - 12, 4, 14);
 
-    // Cabeza (pelo castaño) hacia donde mira
-    const hx = x + this.fx * 4, hy = y + this.fy * 4 + bob;
-    ctx.fillStyle = "#5a3a22";
-    ctx.beginPath(); ctx.arc(hx, hy, this.r * 0.55, 0, Math.PI * 2); ctx.fill();
+    // Cabeza
     ctx.fillStyle = "#e6b58f";
-    ctx.beginPath(); ctx.arc(hx + this.fx * 2, hy + this.fy * 2, this.r * 0.3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y - 21, 7, 0, Math.PI * 2); ctx.fill();
+    // Pelo castaño (media cabeza)
+    ctx.fillStyle = "#5a3a22";
+    ctx.beginPath(); ctx.arc(x, y - 22, 7, Math.PI, Math.PI * 2); ctx.fill();
+    ctx.fillRect(x - 7, y - 23, 14, 3);
+    // Ojo/mirada hacia el lado
+    ctx.fillStyle = "#1a1a1a";
+    ctx.fillRect(x + (s > 0 ? 2 : -4), y - 22, 2, 2);
 
     ctx.restore();
   }

@@ -127,10 +127,9 @@ class TDGame {
     if (this.state === "menu") return;
     ctx.save();
     ctx.translate(-Math.round(this.camX), -Math.round(this.camY));
-    this._drawFloor(ctx);
-    this._drawObjects(ctx);
-    if (this.slender) this.slender.draw(ctx);
-    this.player.draw(ctx);
+    this._drawGround(ctx);                 // piso + arbustos (planos)
+    if (this.slender) this.slender.drawCone(ctx);
+    this._drawSprites(ctx);                // árboles, objetos y personajes de pie, ordenados
     ctx.restore();
     this._drawLighting(ctx);
     this._drawHUD(ctx);
@@ -146,84 +145,118 @@ class TDGame {
     };
   }
 
-  _drawFloor(ctx) {
+  // Piso + arbustos (planos, en el suelo)
+  _drawGround(ctx) {
     const T = TDLevel.TILE;
     const v = this._visibleTiles();
     for (let r = v.r0; r <= v.r1; r++) {
       for (let c = v.c0; c <= v.c1; c++) {
-        const x = c * T, y = r * T;
         if (TDLevel.grid[r][c] === 1) continue;
-        // piso: tierra/pasto con leve tablero
+        const x = c * T, y = r * T;
         ctx.fillStyle = (r + c) % 2 ? "#1b2417" : "#1f2a1a";
         ctx.fillRect(x, y, T, T);
         if (TDLevel.bushes.has(r + "," + c)) {
           ctx.fillStyle = "#2f5a30";
-          ctx.beginPath(); ctx.ellipse(x + T / 2, y + T / 2, T * 0.5, T * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.ellipse(x + T / 2, y + T / 2, T * 0.5, T * 0.42, 0, 0, Math.PI * 2); ctx.fill();
           ctx.fillStyle = "#356436";
-          ctx.beginPath(); ctx.ellipse(x + T * 0.35, y + T * 0.4, T * 0.22, T * 0.2, 0, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-    }
-    // Paredes (árboles / rocas)
-    for (let r = v.r0; r <= v.r1; r++) {
-      for (let c = v.c0; c <= v.c1; c++) {
-        if (TDLevel.grid[r][c] !== 1) continue;
-        const x = c * T, y = r * T;
-        if ((r * 7 + c * 3) % 5 === 0) {
-          // roca
-          ctx.fillStyle = "#3a3540";
-          ctx.beginPath(); ctx.ellipse(x + T / 2, y + T / 2, T * 0.42, T * 0.36, 0, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = "#4a4550";
-          ctx.beginPath(); ctx.ellipse(x + T * 0.4, y + T * 0.42, T * 0.2, T * 0.16, 0, 0, Math.PI * 2); ctx.fill();
-        } else {
-          // árbol: sombra + tronco + copa
-          ctx.fillStyle = "rgba(0,0,0,0.4)";
-          ctx.beginPath(); ctx.ellipse(x + T / 2, y + T * 0.7, T * 0.5, T * 0.4, 0, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = "#241d30";
-          ctx.beginPath(); ctx.ellipse(x + T / 2, y + T / 2, T * 0.5, T * 0.48, 0, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = "#2c2340";
-          ctx.beginPath(); ctx.ellipse(x + T * 0.42, y + T * 0.42, T * 0.28, T * 0.26, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.ellipse(x + T * 0.38, y + T * 0.42, T * 0.22, T * 0.18, 0, 0, Math.PI * 2); ctx.fill();
         }
       }
     }
   }
 
-  _drawObjects(ctx) {
-    // Baterías
-    for (const b of TDLevel.batteries) {
-      if (b.taken) continue;
-      const bob = Math.sin(Date.now() / 280 + b.x) * 2;
-      ctx.fillStyle = "rgba(120,220,255,0.16)";
-      ctx.beginPath(); ctx.arc(b.x, b.y + bob, 14, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#2f6f8a"; ctx.fillRect(b.x - 5, b.y - 8 + bob, 10, 18);
-      ctx.fillStyle = "#48a0c0"; ctx.fillRect(b.x - 4, b.y - 7 + bob, 8, 7);
+  // Sprites verticales (árboles, objetos y personajes), ordenados por profundidad
+  _drawSprites(ctx) {
+    const T = TDLevel.TILE;
+    const v = this._visibleTiles();
+    const items = [];
+
+    for (let r = v.r0; r <= v.r1; r++) {
+      for (let c = v.c0; c <= v.c1; c++) {
+        if (TDLevel.grid[r][c] === 1) {
+          const rock = (r * 7 + c * 3) % 5 === 0;
+          items.push({ y: r * T + T, fn: () => (rock ? this._drawRock(ctx, c, r) : this._drawTree(ctx, c, r)) });
+        }
+      }
     }
-    // Notas
-    for (const n of TDLevel.notes) {
-      if (n.collected) continue;
-      const bob = Math.sin(Date.now() / 300 + n.x) * 2;
-      ctx.fillStyle = "rgba(255,240,180,0.18)";
-      ctx.beginPath(); ctx.arc(n.x, n.y + bob, 18, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#e8e0c8"; ctx.fillRect(n.x - 9, n.y - 11 + bob, 18, 22);
-      ctx.fillStyle = "#8a8168";
-      for (let i = -6; i < 10; i += 4) ctx.fillRect(n.x - 6, n.y + i + bob, 12, 1);
-    }
-    // Generadores
-    for (const g of TDLevel.generators) {
-      ctx.fillStyle = g.active ? "#3a5a3a" : "#4a4a4a"; ctx.fillRect(g.x - 18, g.y - 18, 36, 36);
-      ctx.fillStyle = "#2a2a2a"; ctx.fillRect(g.x - 12, g.y - 12, 24, 20);
-      ctx.fillStyle = g.active ? "#6cff6c" : "#802020";
-      ctx.beginPath(); ctx.arc(g.x, g.y + 12, 4, 0, Math.PI * 2); ctx.fill();
-      if (g.active) { ctx.fillStyle = "rgba(108,255,108,0.15)"; ctx.beginPath(); ctx.arc(g.x, g.y, 26, 0, Math.PI * 2); ctx.fill(); }
-    }
-    // Salida
-    const e = TDLevel.exit;
-    const powered = TDLevel.canExit().gensOff === 0;
-    ctx.fillStyle = "#1a1a22"; ctx.fillRect(e.x - 22, e.y - 22, 44, 44);
-    ctx.fillStyle = powered ? "#5a3a22" : "#2a2018"; ctx.fillRect(e.x - 16, e.y - 16, 32, 32);
+    for (const b of TDLevel.batteries) if (!b.taken) items.push({ y: b.y + 10, fn: () => this._drawBattery(ctx, b) });
+    for (const n of TDLevel.notes) if (!n.collected) items.push({ y: n.y + 12, fn: () => this._drawNote(ctx, n) });
+    for (const g of TDLevel.generators) items.push({ y: g.y + 18, fn: () => this._drawGenerator(ctx, g) });
+    items.push({ y: TDLevel.exit.y + 22, fn: () => this._drawExit(ctx) });
+    items.push({ y: this.player.y + 15, fn: () => this.player.draw(ctx) });
+    if (this.slender) items.push({ y: this.slender.y + 16, fn: () => this.slender.draw(ctx) });
+
+    items.sort((a, b) => a.y - b.y);
+    for (const it of items) it.fn();
+  }
+
+  _drawTree(ctx, c, r) {
+    const T = TDLevel.TILE, x = c * T + T / 2, base = r * T + T * 0.95;
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath(); ctx.ellipse(x, base, T * 0.42, T * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+    // tronco
+    ctx.fillStyle = "#3b2f28"; ctx.fillRect(x - 5, base - T * 0.55, 10, T * 0.55);
+    ctx.fillStyle = "#2c231d"; ctx.fillRect(x - 1, base - T * 0.5, 3, T * 0.5);
+    // copa en capas
+    ctx.fillStyle = "#14220e";
+    ctx.beginPath(); ctx.ellipse(x, base - T * 0.75, T * 0.55, T * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#1d3016";
+    ctx.beginPath(); ctx.ellipse(x - T * 0.12, base - T * 0.9, T * 0.4, T * 0.36, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#26401f";
+    ctx.beginPath(); ctx.ellipse(x - T * 0.2, base - T * 1.0, T * 0.2, T * 0.18, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  _drawRock(ctx, c, r) {
+    const T = TDLevel.TILE, x = c * T + T / 2, base = r * T + T * 0.85;
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath(); ctx.ellipse(x, base, T * 0.4, T * 0.14, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#3a3540";
+    ctx.beginPath(); ctx.ellipse(x, base - T * 0.22, T * 0.4, T * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#4a4550";
+    ctx.beginPath(); ctx.ellipse(x - T * 0.1, base - T * 0.3, T * 0.22, T * 0.15, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  _drawBattery(ctx, b) {
+    const bob = Math.sin(Date.now() / 280 + b.x) * 2, y = b.y + bob;
+    ctx.fillStyle = "rgba(120,220,255,0.16)";
+    ctx.beginPath(); ctx.arc(b.x, y, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#2f6f8a"; ctx.fillRect(b.x - 5, y - 12, 10, 18);
+    ctx.fillStyle = "#48a0c0"; ctx.fillRect(b.x - 4, y - 11, 8, 7);
+    ctx.fillStyle = "#d8d8d8"; ctx.fillRect(b.x - 2, y - 15, 4, 3);
+  }
+
+  _drawNote(ctx, n) {
+    const bob = Math.sin(Date.now() / 300 + n.x) * 2, y = n.y + bob;
+    ctx.fillStyle = "rgba(255,240,180,0.18)";
+    ctx.beginPath(); ctx.arc(n.x, y, 18, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#e8e0c8"; ctx.fillRect(n.x - 9, y - 16, 18, 22);
+    ctx.fillStyle = "#8a8168";
+    for (let i = -11; i < 4; i += 4) ctx.fillRect(n.x - 6, y + i, 12, 1);
+  }
+
+  _drawGenerator(ctx, g) {
+    const y = g.y - 6;
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.beginPath(); ctx.ellipse(g.x, g.y + 20, 22, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = g.active ? "#3a5a3a" : "#4a4a4a"; ctx.fillRect(g.x - 18, y - 20, 36, 40);
+    ctx.fillStyle = "#2a2a2a"; ctx.fillRect(g.x - 12, y - 14, 24, 22);
+    ctx.fillStyle = g.active ? "#6cff6c" : "#802020";
+    ctx.beginPath(); ctx.arc(g.x, y + 14, 4, 0, Math.PI * 2); ctx.fill();
+    if (g.active) { ctx.fillStyle = "rgba(108,255,108,0.15)"; ctx.beginPath(); ctx.arc(g.x, y, 26, 0, Math.PI * 2); ctx.fill(); }
+  }
+
+  _drawExit(ctx) {
+    const e = TDLevel.exit, powered = TDLevel.canExit().gensOff === 0;
+    const y = e.y - 8;
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath(); ctx.ellipse(e.x, e.y + 24, 26, 8, 0, 0, Math.PI * 2); ctx.fill();
+    // portal de piedra vertical
+    ctx.fillStyle = "#1a1a22"; ctx.fillRect(e.x - 24, y - 30, 48, 62);
+    ctx.fillStyle = powered ? "#5a3a22" : "#2a2018"; ctx.fillRect(e.x - 17, y - 24, 34, 56);
+    ctx.fillStyle = powered ? "#6a4527" : "#33261a"; ctx.fillRect(e.x - 12, y - 20, 24, 52);
     ctx.fillStyle = powered ? "#d8c060" : "#5a5040";
-    ctx.beginPath(); ctx.arc(e.x + 8, e.y, 3, 0, Math.PI * 2); ctx.fill();
-    if (powered) { ctx.fillStyle = "rgba(255,230,150,0.14)"; ctx.beginPath(); ctx.arc(e.x, e.y, 40, 0, Math.PI * 2); ctx.fill(); }
+    ctx.beginPath(); ctx.arc(e.x + 9, y + 6, 3, 0, Math.PI * 2); ctx.fill();
+    if (powered) { ctx.fillStyle = "rgba(255,230,150,0.14)"; ctx.beginPath(); ctx.arc(e.x, y, 44, 0, Math.PI * 2); ctx.fill(); }
   }
 
   _drawLighting(ctx) {

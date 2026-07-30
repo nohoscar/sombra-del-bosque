@@ -2,7 +2,7 @@
 // Bosque 2D con obstáculos (árboles/rocas), arbustos para esconderse,
 // notas, generador y salida. Caminos hacia objetivos garantizados.
 const TDLevel = {
-  TILE: 40,
+  TILE: 52,
   cols: 48,
   rows: 30,
   grid: [],          // 0 = piso, 1 = pared

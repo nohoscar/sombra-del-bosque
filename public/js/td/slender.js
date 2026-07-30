@@ -133,45 +133,69 @@ class TDSlender {
     return best;
   }
 
-  draw(ctx) {
+  // Cono de visión, plano sobre el piso (se dibuja antes que los sprites)
+  drawCone(ctx) {
+    if (this.state === "chase") return;
     const x = this.x, y = this.y;
+    const base = Math.atan2(this.fy, this.fx);
+    ctx.fillStyle = this.state === "suspicious" ? "rgba(200,60,60,0.10)" : "rgba(180,180,200,0.07)";
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.arc(x, y, this.viewDist, base - this.halfAngle, base + this.halfAngle);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Cuerpo en perspectiva 3/4: figura alta y delgada, anclada por los pies
+  draw(ctx) {
+    const x = Math.round(this.x), y = Math.round(this.y);
     const chasing = this.state === "chase";
+    const sway = Math.sin(this.flicker * 1.5) * 1.5;
 
-    // Cono de visión (si no persigue)
-    if (!chasing) {
-      const a0 = Math.atan2(this.fy, this.fx) - this.halfAngle;
-      const a1 = Math.atan2(this.fy, this.fx) + this.halfAngle;
-      ctx.fillStyle = this.state === "suspicious" ? "rgba(200,60,60,0.10)" : "rgba(180,180,200,0.07)";
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.arc(x, y, this.viewDist, a0, a1);
-      ctx.closePath();
-      ctx.fill();
-    }
+    // Sombra
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.beginPath(); ctx.ellipse(x, y + 16, 15, 6, 0, 0, Math.PI * 2); ctx.fill();
 
-    // Sombra/aura
-    ctx.fillStyle = "rgba(0,0,0,0.4)";
-    ctx.beginPath(); ctx.ellipse(x, y + 10, 16, 8, 0, 0, Math.PI * 2); ctx.fill();
-
-    // Tentáculos al perseguir
+    // Tentáculos al perseguir (irradian desde el cuerpo)
     if (chasing) {
       ctx.strokeStyle = "#0a0a0d";
       ctx.lineWidth = 3;
       for (let i = 0; i < 5; i++) {
         const a = (i / 5) * Math.PI * 2 + this.flicker;
-        const len = 20 + Math.sin(this.flicker * 6 + i) * 10;
-        ctx.beginPath(); ctx.moveTo(x, y);
-        ctx.lineTo(x + Math.cos(a) * (this.r + len), y + Math.sin(a) * (this.r + len));
+        const len = 22 + Math.sin(this.flicker * 6 + i) * 12;
+        ctx.beginPath(); ctx.moveTo(x, y - 14);
+        ctx.lineTo(x + Math.cos(a) * (16 + len), y - 14 + Math.sin(a) * (16 + len));
         ctx.stroke();
       }
       ctx.lineWidth = 1;
     }
 
-    // Cuerpo (traje negro) visto desde arriba
-    ctx.fillStyle = "#141418";
-    ctx.beginPath(); ctx.arc(x, y, this.r, 0, Math.PI * 2); ctx.fill();
-    // Cabeza pálida sin rostro, orientada
-    ctx.fillStyle = "#e9e9ec";
-    ctx.beginPath(); ctx.arc(x + this.fx * 4, y + this.fy * 4, this.r * 0.5, 0, Math.PI * 2); ctx.fill();
+    // Piernas (pantalón negro)
+    ctx.fillStyle = "#0d0d10";
+    ctx.fillRect(x - 6, y - 2, 5, 18);
+    ctx.fillRect(x + 1, y - 2, 5, 18);
+
+    // Torso alargado (traje) + camisa/corbata
+    ctx.fillStyle = "#161620";
+    ctx.fillRect(x - 8 + sway, y - 30, 16, 30);
+    ctx.fillStyle = "#e8e8ea";
+    ctx.fillRect(x - 2 + sway, y - 28, 4, 24);
+    ctx.fillStyle = "#a01f1f";
+    ctx.fillRect(x - 1 + sway, y - 26, 2, 12);
+
+    // Brazos largos y finos
+    ctx.fillStyle = "#161620";
+    ctx.fillRect(x - 11 + sway, y - 28, 3, 26);
+    ctx.fillRect(x + 8 + sway, y - 28, 3, 26);
+    // Manos pálidas
+    ctx.fillStyle = "#dcdce0";
+    ctx.fillRect(x - 11 + sway, y - 4, 3, 5);
+    ctx.fillRect(x + 8 + sway, y - 4, 3, 5);
+
+    // Cabeza blanca sin rostro
+    ctx.fillStyle = "#eef0f2";
+    ctx.beginPath(); ctx.arc(x + sway, y - 38, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(120,120,130,0.2)";
+    ctx.beginPath(); ctx.arc(x + sway, y - 37, 5, 0, Math.PI * 2); ctx.fill();
   }
 }
