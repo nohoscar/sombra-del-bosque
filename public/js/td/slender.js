@@ -29,6 +29,11 @@ class TDSlender {
     // Puntos de patrulla: tiles de piso repartidos
     this.waypoints = this._genWaypoints(6);
     this.wp = 0;
+
+    // Navegación por caminos
+    this._path = [];
+    this.pathT = 0;
+    this._goalKey = "";
   }
 
   // Busca el tile de piso más cercano (spiral) para no aparecer dentro de una pared
@@ -86,11 +91,32 @@ class TDSlender {
     return moved;
   }
 
+  // Navega hacia (gx,gy) rodeando obstáculos (recalcula la ruta cada tanto)
+  _navigate(gx, gy, speed, dt, recomputeEvery) {
+    const my = TDLevel.tileAtPx(this.x, this.y);
+    const gt = TDLevel.tileAtPx(gx, gy);
+    const gk = gt.c + "," + gt.r;
+    this.pathT -= dt;
+    if (this.pathT <= 0 || this._goalKey !== gk || !this._path.length) {
+      this._path = TDLevel.findPath(my.c, my.r, gt.c, gt.r) || [];
+      this._goalKey = gk;
+      this.pathT = recomputeEvery;
+    }
+    if (this._path.length) {
+      const n = this._path[0];
+      const moved = this._moveToward(n.x, n.y, speed, dt);
+      if (Math.hypot(n.x - this.x, n.y - this.y) < 16) this._path.shift();
+      return moved;
+    }
+    return this._moveToward(gx, gy, speed, dt); // fallback directo (cerca)
+  }
+
   // La linterna lo alcanza: se enfurece y carga hacia el jugador
   onLit() {
     this.state = "chase";
     this.detection = 100;
     this.lunge = Math.max(this.lunge, 1.1);
+    this.pathT = 0;
   }
 
   // Atraído por el ruido de encender un foco: se acerca al punto
@@ -110,39 +136,35 @@ class TDSlender {
 
     if (this.state === "chase") {
       if (p.hidden) {
+        // Perdió el rastro: navega al último punto y afloja
         this.detection -= (65 * this.hideLose / this.persistence) * dt;
-        // se acerca al ultimo rastro
-        this._moveToward(p.x, p.y, this.speed * 1.5, dt);
-        if (this.detection <= 25) { this.state = "patrol"; this.wp = this._nearestWaypoint(); }
+        this._navigate(p.x, p.y, this.speed * 1.3, dt, 0.35);
+        if (this.detection <= 25) { this.state = "patrol"; this.wp = this._nearestWaypoint(); this.pathT = 0; }
       } else {
         this.detection = 100;
-        const chaseSpeed = this.speed * (this.lunge > 0 ? 2.6 : 1.9); // embiste al ser iluminado
-        const moved = this._moveToward(p.x, p.y, chaseSpeed, dt);
-        if (!moved) this.stuck += dt; else this.stuck = 0;
-        // Desatasco: si choca contra una pared, intenta rodearla
-        if (this.stuck > 0.25) {
-          const perpX = -(p.y - this.y), perpY = (p.x - this.x);
-          const d = Math.hypot(perpX, perpY) || 1;
-          this._moveToward(this.x + perpX / d * 60, this.y + perpY / d * 60, chaseSpeed, dt);
-          this.stuck = 0;
-        }
-        if (dist < 24) this.caught = true;
+        // Persecución: más lento que correr (podés escapar), embiste si te iluminó
+        const chaseSpeed = this.speed * (this.lunge > 0 ? 1.9 : 1.5);
+        this._navigate(p.x, p.y, chaseSpeed, dt, 0.25);
+        if (dist < 20) this.caught = true;
       }
     } else {
-      // patrol / suspicious: recorre puntos
-      const t = this.waypoints[this.wp];
-      const reached = !this._moveToward(t.x, t.y, this.speed * (this.state === "suspicious" ? 0.5 : 1), dt);
-      const near = Math.hypot(t.x - this.x, t.y - this.y) < 26;
-      if (near || reached) {
-        this.stuck += dt;
-        if (near || this.stuck > 1.2) { this.wp = (this.wp + 1) % this.waypoints.length; this.stuck = 0; }
-      } else this.stuck = 0;
+      // Patrulla / sospecha: navega por el mapa rodeando árboles
+      if (this.state === "suspicious") {
+        this._navigate(p.x, p.y, this.speed * 0.85, dt, 0.4);
+      } else {
+        const t = this.waypoints[this.wp];
+        const moved = this._navigate(t.x, t.y, this.speed * 0.85, dt, 0.5);
+        const near = Math.hypot(t.x - this.x, t.y - this.y) < 34;
+        if (near) { this.wp = (this.wp + 1) % this.waypoints.length; this.pathT = 0; this.stuck = 0; }
+        else if (!moved) { this.stuck += dt; if (this.stuck > 0.9) { this.wp = (this.wp + 1) % this.waypoints.length; this.pathT = 0; this.stuck = 0; } }
+        else this.stuck = 0;
+      }
 
       if (sees) this.detection += 62 * dt;
       else if (hears) this.detection += 26 * dt;
       else this.detection -= 34 * dt;
 
-      if (this.detection >= 100) this.state = "chase";
+      if (this.detection >= 100) { this.state = "chase"; this.pathT = 0; }
       else if (this.detection > 45) this.state = "suspicious";
       else if (this.detection <= 20) this.state = "patrol";
     }

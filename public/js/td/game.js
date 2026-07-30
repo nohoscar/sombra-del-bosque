@@ -80,7 +80,7 @@ class TDGame {
       for (const s of this.slenders) if (Math.hypot(s.x - g.x, s.y - g.y) < g.radius) s.fleeFrom(g.x, g.y, dt);
     }
 
-    if (anyChase) rise += 45;
+    if (anyChase) rise += 30;
     const fm = (typeof Difficulty !== "undefined") ? Difficulty.get().fearMul : 1;
     rise *= fm;
     if (p.hidden) this.static -= 30 * dt;

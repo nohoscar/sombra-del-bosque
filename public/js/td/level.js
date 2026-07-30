@@ -64,6 +64,44 @@ const TDLevel = {
     return this.bushes.has(r + "," + c);
   },
 
+  // Búsqueda de camino (BFS sobre la grilla). Devuelve lista de centros de tile
+  // desde el siguiente paso hasta el destino, o null si no hay ruta.
+  findPath(sc, sr, tc, tr) {
+    const C = this.cols, R = this.rows;
+    if (tc < 0 || tr < 0 || tc >= C || tr >= R || this.grid[tr][tc] === 1) return null;
+    if (sc === tc && sr === tr) return [];
+    const key = (c, r) => r * C + c;
+    const came = new Int32Array(C * R).fill(-1);
+    const seen = new Uint8Array(C * R);
+    const q = [[sc, sr]];
+    seen[key(sc, sr)] = 1;
+    let found = false, head = 0, iter = 0;
+    while (head < q.length && iter++ < 6000) {
+      const [c, r] = q[head++];
+      if (c === tc && r === tr) { found = true; break; }
+      const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      for (const [dc, dr] of nb) {
+        const nc = c + dc, nr = r + dr;
+        if (nc < 0 || nr < 0 || nc >= C || nr >= R) continue;
+        if (this.grid[nr][nc] === 1) continue;
+        const k = key(nc, nr);
+        if (seen[k]) continue;
+        seen[k] = 1; came[k] = key(c, r); q.push([nc, nr]);
+      }
+    }
+    if (!found) return null;
+    const path = [];
+    let k = key(tc, tr);
+    const startK = key(sc, sr);
+    while (k !== startK && k >= 0) {
+      const c = k % C, r = (k - c) / C;
+      path.push(this.center(c, r));
+      k = came[k];
+    }
+    path.reverse();
+    return path;
+  },
+
   _clearRadius(c, r, rad) {
     for (let dr = -rad; dr <= rad; dr++)
       for (let dc = -rad; dc <= rad; dc++) {
