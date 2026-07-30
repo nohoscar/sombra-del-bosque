@@ -6,7 +6,10 @@ import { readFile } from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 
-const ROOT = process.cwd();
+// Sirve la carpeta public/ (donde vive el juego); si no existe, sirve la raíz.
+const ROOT = existsSync(path.join(process.cwd(), "public"))
+  ? path.join(process.cwd(), "public")
+  : process.cwd();
 const PORT = process.env.PORT || 8000;
 
 const MIME = {

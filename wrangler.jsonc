@@ -1,0 +1,10 @@
+{
+  // Configuración de Cloudflare (Workers Static Assets).
+  // Publica SOLO la carpeta public/, así node_modules, tools y package.json
+  // nunca se suben (evita el error "Asset too large" con workerd de 122 MiB).
+  "name": "sombra-del-bosque",
+  "compatibility_date": "2025-07-01",
+  "assets": {
+    "directory": "./public"
+  }
+}

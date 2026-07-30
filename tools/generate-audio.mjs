@@ -16,7 +16,7 @@ import path from "node:path";
 
 const API = "https://api.elevenlabs.io/v1";
 const KEY = process.env.ELEVENLABS_API_KEY;
-const OUT = path.resolve(process.cwd(), "audio");
+const OUT = path.resolve(process.cwd(), "public", "audio");
 
 if (!KEY) {
   console.error("\n[ERROR] Falta ELEVENLABS_API_KEY en el entorno.");
