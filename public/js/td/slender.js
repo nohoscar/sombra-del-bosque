@@ -24,6 +24,7 @@ class TDSlender {
     this.caught = false;
     this.flicker = 0;
     this.stuck = 0;
+    this.lunge = 0;   // embestida (más veloz) al ser iluminado
 
     // Puntos de patrulla: tiles de piso repartidos
     this.waypoints = this._genWaypoints(6);
@@ -85,8 +86,24 @@ class TDSlender {
     return moved;
   }
 
+  // La linterna lo alcanza: se enfurece y carga hacia el jugador
+  onLit() {
+    this.state = "chase";
+    this.detection = 100;
+    this.lunge = Math.max(this.lunge, 1.1);
+  }
+
+  // Atraído por el ruido de encender un foco: se acerca al punto
+  lureTo(x, y, dt) {
+    if (this.state === "chase") return;
+    this._moveToward(x, y, this.speed * 1.15, dt);
+    this.detection = Math.min(100, this.detection + 45 * dt);
+    if (this.detection > 45) this.state = "suspicious";
+  }
+
   update(dt, p) {
     this.flicker += dt;
+    if (this.lunge > 0) this.lunge -= dt;
     const dist = Math.hypot(p.x - this.x, p.y - this.y);
     const sees = this.canSee(p);
     const hears = dist < 240 * p.noise && !p.hidden && TDLevel.lineOfSight(this.x, this.y, p.x, p.y);
@@ -99,8 +116,16 @@ class TDSlender {
         if (this.detection <= 25) { this.state = "patrol"; this.wp = this._nearestWaypoint(); }
       } else {
         this.detection = 100;
-        const moved = this._moveToward(p.x, p.y, this.speed * 1.9, dt);
+        const chaseSpeed = this.speed * (this.lunge > 0 ? 2.6 : 1.9); // embiste al ser iluminado
+        const moved = this._moveToward(p.x, p.y, chaseSpeed, dt);
         if (!moved) this.stuck += dt; else this.stuck = 0;
+        // Desatasco: si choca contra una pared, intenta rodearla
+        if (this.stuck > 0.25) {
+          const perpX = -(p.y - this.y), perpY = (p.x - this.x);
+          const d = Math.hypot(perpX, perpY) || 1;
+          this._moveToward(this.x + perpX / d * 60, this.y + perpY / d * 60, chaseSpeed, dt);
+          this.stuck = 0;
+        }
         if (dist < 24) this.caught = true;
       }
     } else {

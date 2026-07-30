@@ -31,6 +31,7 @@ class TDGame {
     this.player.reset();
     this.slenders = TDLevel.slenderConfigs.map((c) => new TDSlender(c));
     this.static = 0; this.corruption = 0; this._lastFoot = 0; this.paused = false;
+    this.channelGen = null; this.channelT = 0; this.channelPoint = null; this.channelBlocked = false;
     this.genCharges = (typeof Difficulty !== "undefined") ? Difficulty.get().genCharges : 2;
     this.ambient = TDLevel.ambient;
     Sound.startAmbience();
@@ -66,6 +67,8 @@ class TDGame {
         const ang = Math.acos(Math.max(-1, Math.min(1, (p.fx * dx + p.fy * dy) / dist)));
         if (ang < 0.9 && dist < 440) rise = Math.max(rise, (1 - dist / 440) * 28);
         if (dist < 170) rise = Math.max(rise, 9);
+        // Si la linterna lo alcanza, se enfurece y carga hacia ti
+        if (p.flashlight && dist < 340 && ang < 0.55) s.onLit();
       }
     }
 
@@ -87,7 +90,9 @@ class TDGame {
     this.corruption = Math.max(0, Math.min(1, (this.static - 55) / 45));
 
     this._camera();
-    this._interactions();
+    this._interactions(dt);
+    // El ruido de encender un foco atrae a los Esbeltos hacia ese punto
+    if (this.channelPoint) for (const s of this.slenders) s.lureTo(this.channelPoint.x, this.channelPoint.y, dt);
     if (this.msgTimer > 0) this.msgTimer -= dt;
 
     Sound.update(dt);
@@ -111,7 +116,7 @@ class TDGame {
 
   _notify(m) { this.message = m; this.msgTimer = 0.5; }
 
-  _interactions() {
+  _interactions(dt) {
     const p = this.player;
     for (const b of TDLevel.batteries) {
       if (!b.taken && Math.hypot(p.x - b.x, p.y - b.y) < 26) { b.taken = true; p.addBattery(45); this._notify("+ Bateria"); }
@@ -125,19 +130,46 @@ class TDGame {
         this._emit("note", { kind: nearNote.kind, title: nearNote.title, text: nearNote.text });
       }
     }
+
+    // Focos: mantener E para encender (canalización). El ruido atrae al Esbelto,
+    // y si se acerca demasiado, lo impide con un chispazo.
+    let cg = null;
     for (const g of TDLevel.generators) {
-      if (Math.hypot(p.x - g.x, p.y - g.y) >= 40) continue;
-      if (g.active) { this._notify(`Foco activo (${Math.ceil(g.timer)}s)`); continue; }
-      if (this.genCharges > 0) {
-        this._notify(`E: encender foco  (${this.genCharges} usos)`);
-        if (Input.wasPressed("interact")) {
-          g.active = true;
-          g.timer = (typeof Difficulty !== "undefined") ? Difficulty.get().litDuration : 9;
-          this.genCharges--;
-          this._notify("Foco encendido: zona segura");
-        }
-      } else this._notify("Sin cargas de generador");
+      if (g.active && Math.hypot(p.x - g.x, p.y - g.y) < 44) this._notify(`Foco activo (${Math.ceil(g.timer)}s)`);
+      if (!g.active && Math.hypot(p.x - g.x, p.y - g.y) < 44) cg = g;
     }
+    this.channelPoint = null;
+    if (cg && this.genCharges > 0 && Input.isDown("interact") && !this.channelBlocked) {
+      if (this.channelGen !== cg) { this.channelGen = cg; this.channelT = 0; }
+      this.channelT += dt;
+      this.channelPoint = { x: cg.x, y: cg.y };
+      const intruder = this.slenders.find((s) => Math.hypot(s.x - cg.x, s.y - cg.y) < 140);
+      if (intruder) {
+        this.channelGen = null; this.channelT = 0; this.channelPoint = null; this.channelBlocked = true;
+        this.static = Math.min(100, this.static + 22);
+        intruder.onLit();
+        Sound.stinger();
+        this._notify("¡El Esbelto lo impide!");
+      } else {
+        const need = 1.2;
+        if (this.channelT >= need) {
+          cg.active = true;
+          cg.timer = (typeof Difficulty !== "undefined") ? Difficulty.get().litDuration : 9;
+          this.genCharges--;
+          this.channelGen = null; this.channelT = 0;
+          this._notify("Foco encendido: zona segura");
+        } else {
+          this._notify(`Encendiendo foco... ${Math.round(this.channelT / need * 100)}%`);
+        }
+      }
+    } else {
+      this.channelGen = null; this.channelT = 0;
+      if (!Input.isDown("interact")) this.channelBlocked = false;
+      if (cg && this.channelBlocked) this._notify("El Esbelto vigila el foco...");
+      else if (cg && this.genCharges <= 0) this._notify("Sin cargas de generador");
+      else if (cg) this._notify("Manten E para encender el foco");
+    }
+
     const e = TDLevel.exit;
     if (Math.hypot(p.x - e.x, p.y - e.y) < 40) {
       const st = TDLevel.canExit();
