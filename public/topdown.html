@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sombra del Bosque - Prototipo Cenital</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game" width="1024" height="576"></canvas>
+
+    <div id="start-screen" class="overlay">
+      <p class="subtitle">PROTOTIPO &mdash; VISTA CENITAL</p>
+      <h1>SOMBRA DEL BOSQUE</h1>
+      <p class="story">
+        Noche 1: El Sendero. Explora el bosque en vista superior,
+        rodea al Esbelto usando arboles y sombras, y escapa.
+      </p>
+      <div class="controls-help">
+        <p><b>WASD / Flechas</b> &mdash; Moverse en 8 direcciones</p>
+        <p><b>SHIFT</b> &mdash; Correr (hace ruido)</p>
+        <p><b>F</b> &mdash; Linterna (ilumina hacia donde miras)</p>
+        <p><b>E</b> &mdash; Examinar notas / generador / salida</p>
+        <p><b>Arbustos</b> &mdash; Metete para esconderte</p>
+        <p><b>M</b> &mdash; Silenciar</p>
+      </div>
+      <button id="start-btn">ENTRAR AL BOSQUE</button>
+    </div>
+
+    <div id="gameover-screen" class="overlay hidden">
+      <h1 class="danger">TE ATRAP&Oacute;</h1>
+      <p class="story">El bosque te reclam&oacute;. Vuelve a intentarlo.</p>
+      <button id="retry-btn">REINTENTAR</button>
+    </div>
+
+    <div id="win-screen" class="overlay hidden">
+      <h1 class="win">ESCAPASTE</h1>
+      <p class="story">Superaste el prototipo de la Noche 1. &iquest;C&oacute;mo se sinti&oacute;?</p>
+      <button id="win-btn">JUGAR OTRA VEZ</button>
+    </div>
+
+    <div id="note-screen" class="overlay hidden">
+      <div class="note-paper" id="note-paper">
+        <p class="note-source" id="note-title"></p>
+        <p id="note-text"></p>
+        <button id="note-btn">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/input.js"></script>
+  <script src="js/difficulty.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/td/level.js"></script>
+  <script src="js/td/player.js"></script>
+  <script src="js/td/slender.js"></script>
+  <script src="js/td/game.js"></script>
+  <script src="js/td/main.js"></script>
+</body>
+</html>
