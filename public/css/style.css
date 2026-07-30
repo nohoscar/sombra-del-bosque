@@ -260,6 +260,33 @@ button:hover {
   line-height: 1.5;
 }
 
+/* Botón de pausa */
+#pause-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 7;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 16px;
+  letter-spacing: 2px;
+  border-radius: 6px;
+  background: rgba(20, 28, 22, 0.6);
+  border: 1px solid rgba(120, 160, 130, 0.5);
+  color: #dfe6df;
+  display: none;
+}
+#pause-btn.on { display: block; }
+
+.btn-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 260px;
+}
+.btn-col button { width: 100%; }
+
 /* Controles táctiles (celular) */
 #touch-controls {
   position: absolute;
