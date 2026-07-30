@@ -29,6 +29,10 @@ class TDPlayer {
     if (Input.isDown("right")) ix += 1;
     if (Input.isDown("up")) iy -= 1;
     if (Input.isDown("down")) iy += 1;
+    // Joystick táctil (analógico)
+    if (Math.abs(Input.moveX) > 0.05 || Math.abs(Input.moveY) > 0.05) {
+      ix += Input.moveX; iy += Input.moveY;
+    }
 
     const wantsRun = Input.isDown("run") && this.stamina > 0 && (ix || iy);
     this.running = !!wantsRun;

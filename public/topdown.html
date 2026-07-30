@@ -2,13 +2,21 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Sombra del Bosque - Prototipo Cenital</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
   <div id="game-container">
     <canvas id="game" width="1024" height="576"></canvas>
+
+    <!-- Controles t&aacute;ctiles (celular) -->
+    <div id="touch-controls">
+      <div id="joystick"><div id="joystick-knob"></div></div>
+      <div id="btn-action" class="touch-btn">E</div>
+      <div id="btn-light" class="touch-btn">LUZ</div>
+      <div id="btn-run" class="touch-btn">CORRER</div>
+    </div>
 
     <div id="start-screen" class="overlay">
       <p class="subtitle">PROTOTIPO &mdash; VISTA CENITAL</p>

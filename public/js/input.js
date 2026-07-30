@@ -3,6 +3,8 @@ const Input = {
   keys: {},          // estado continuo (mantener presionado)
   pressed: {},       // solo el frame en que se presionó
   _pressedBuffer: {},
+  moveX: 0,          // eje analógico del joystick táctil (-1..1)
+  moveY: 0,
 
   init() {
     window.addEventListener("keydown", (e) => {
@@ -61,5 +63,18 @@ const Input = {
 
   wasPressed(action) {
     return !!this.pressed[action];
+  },
+
+  // --- Entrada virtual (controles táctiles) ---
+  press(action) {
+    if (!this.keys[action]) this._pressedBuffer[action] = true;
+    this.keys[action] = true;
+  },
+  release(action) {
+    this.keys[action] = false;
+  },
+  setAxis(x, y) {
+    this.moveX = x;
+    this.moveY = y;
   },
 };
