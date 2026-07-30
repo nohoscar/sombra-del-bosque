@@ -295,15 +295,18 @@ class TDGame {
 
     lx.globalCompositeOperation = "source-over";
     lx.clearRect(0, 0, W, H);
-    lx.fillStyle = `rgba(4,5,10,${0.9 + fear * 0.08})`;
+    lx.fillStyle = `rgba(4,5,10,${0.62 + fear * 0.14})`;
     lx.fillRect(0, 0, W, H);
     lx.globalCompositeOperation = "destination-out";
 
-    // Halo ambiental
-    const amb = lx.createRadialGradient(px, py, 8, px, py, 120);
-    amb.addColorStop(0, "rgba(0,0,0,0.95)"); amb.addColorStop(1, "rgba(0,0,0,0)");
+    // Halo ambiental (más amplio para ver mejor el entorno)
+    const ambR = 210;
+    const amb = lx.createRadialGradient(px, py, 40, px, py, ambR);
+    amb.addColorStop(0, "rgba(0,0,0,1)");
+    amb.addColorStop(0.55, "rgba(0,0,0,0.85)");
+    amb.addColorStop(1, "rgba(0,0,0,0)");
     lx.fillStyle = amb;
-    lx.beginPath(); lx.arc(px, py, 120, 0, Math.PI * 2); lx.fill();
+    lx.beginPath(); lx.arc(px, py, ambR, 0, Math.PI * 2); lx.fill();
 
     // Cono de linterna (sector en la dirección de la mirada)
     if (p.flashlight) {

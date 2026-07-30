@@ -14,7 +14,7 @@ class TDSlender {
     this.x = spawn.x; this.y = spawn.y;
     this.r = 14;
     this.fx = -1; this.fy = 0;
-    this.speed = (c.speed ?? 80) * d.slenderSpeed;
+    this.speed = (c.speed ?? 104) * d.slenderSpeed;
     this.viewDist = (c.viewDist ?? 320) * d.view;
     this.halfAngle = 0.6;                 // ~34° a cada lado
     this.hideLose = d.hideLose;
