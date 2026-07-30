@@ -1,0 +1,273 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: #05060a;
+  overflow: hidden;
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  color: #e8e8e8;
+}
+
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#game-container {
+  position: relative;
+  width: 1024px;
+  height: 576px;
+  max-width: 100vw;
+  max-height: 100vh;
+  box-shadow: 0 0 60px rgba(0, 0, 0, 0.9);
+}
+
+#game {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #0a0e14;
+  image-rendering: pixelated;
+}
+
+/* Overlays */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px;
+  background: radial-gradient(circle at center, rgba(10, 14, 20, 0.92), rgba(2, 3, 6, 0.98));
+  z-index: 10;
+  overflow-y: auto;
+  animation: fadeIn 0.6s ease;
+}
+
+.overlay.hidden {
+  display: none;
+}
+
+h1 {
+  font-size: 52px;
+  letter-spacing: 6px;
+  color: #cdd6d0;
+  text-shadow: 0 0 18px rgba(120, 180, 140, 0.4);
+  margin-bottom: 6px;
+}
+
+h1.danger {
+  color: #b53030;
+  text-shadow: 0 0 22px rgba(200, 40, 40, 0.6);
+  animation: shake 0.4s;
+}
+
+h1.win {
+  color: #8fd6a0;
+  text-shadow: 0 0 22px rgba(120, 220, 150, 0.5);
+}
+
+.subtitle {
+  font-size: 18px;
+  letter-spacing: 8px;
+  color: #7a8a7f;
+  margin-bottom: 26px;
+}
+
+.story {
+  max-width: 620px;
+  font-size: 16px;
+  line-height: 1.6;
+  color: #b9c2ba;
+  margin-bottom: 26px;
+}
+
+.controls-help {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 34px;
+  margin-bottom: 30px;
+  font-size: 14px;
+  color: #9aa39b;
+}
+
+.controls-help b {
+  color: #d8e0d8;
+}
+
+button {
+  background: #1f2a22;
+  color: #d8e0d8;
+  border: 1px solid #3d5142;
+  padding: 14px 34px;
+  font-size: 16px;
+  letter-spacing: 2px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+button:hover {
+  background: #2c3a2e;
+  border-color: #6a8a70;
+  box-shadow: 0 0 16px rgba(120, 180, 140, 0.3);
+}
+
+/* Documento encontrado (base) */
+.note-paper {
+  background: #d9c7a3;
+  color: #2a2418;
+  max-width: 540px;
+  min-width: 380px;
+  padding: 34px 42px 28px;
+  border-radius: 3px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+  transform: rotate(-1deg);
+  font-family: "Courier New", monospace;
+}
+
+.note-paper .note-source {
+  font-size: 13px;
+  letter-spacing: 1px;
+  font-weight: bold;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+  padding-bottom: 8px;
+  margin-bottom: 16px;
+  opacity: 0.85;
+}
+
+.note-paper #note-text {
+  font-size: 16px;
+  line-height: 1.7;
+  margin-bottom: 22px;
+  white-space: pre-line;
+}
+
+.note-paper button {
+  background: rgba(0, 0, 0, 0.12);
+  color: inherit;
+  border-color: rgba(0, 0, 0, 0.3);
+}
+
+/* Diario personal: papel cálido */
+.note-paper.note-diario { background: #d9c7a3; color: #2a2418; }
+
+/* Reporte policial: carpeta manila con sello */
+.note-paper.note-policial {
+  background: #cdbf9a;
+  color: #2b2718;
+  transform: rotate(0.6deg);
+  border-left: 6px solid #7a2a2a;
+}
+.note-paper.note-policial .note-source { color: #7a2a2a; }
+
+/* Grabación de voz: grabadora digital */
+.note-paper.note-grabacion {
+  background: #12181a;
+  color: #7fe0a0;
+  font-family: "Consolas", "Courier New", monospace;
+  border: 1px solid #2a4a3a;
+  transform: rotate(0deg);
+  box-shadow: 0 0 30px rgba(60, 200, 130, 0.15), 0 10px 40px rgba(0, 0, 0, 0.7);
+}
+.note-paper.note-grabacion .note-source { color: #4fd08a; border-color: rgba(120, 220, 160, 0.3); }
+.note-paper.note-grabacion button { background: #1a2a24; color: #7fe0a0; border-color: #2a4a3a; }
+
+/* Dibujo infantil: papel blanco */
+.note-paper.note-dibujo {
+  background: #eef0ea;
+  color: #3a3a4a;
+  font-family: "Comic Sans MS", "Trebuchet MS", cursive;
+  transform: rotate(-2deg);
+}
+.note-paper.note-dibujo .note-source { color: #5a5a8a; }
+
+/* Inscripción en piedra: gris grabado */
+.note-paper.note-cripta {
+  background: #4a4a52;
+  color: #d8d8e0;
+  font-family: "Georgia", serif;
+  letter-spacing: 1px;
+  border: 2px solid #33333a;
+  transform: rotate(0deg);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+.note-paper.note-cripta .note-source { color: #b8b8c4; }
+.note-paper.note-cripta button { background: #33333a; color: #d8d8e0; border-color: #55555f; }
+
+/* Aviso/cartel: madera desgastada */
+.note-paper.note-aviso {
+  background: #8a6a44;
+  color: #f0e6d0;
+  transform: rotate(-0.8deg);
+  border: 3px solid #5a4028;
+}
+.note-paper.note-aviso .note-source { color: #ffe0a0; border-color: rgba(255, 255, 255, 0.2); }
+.note-paper.note-aviso button { background: #5a4028; color: #f0e6d0; border-color: #3a2818; }
+
+.btn-row {
+  display: flex;
+  gap: 16px;
+}
+
+.difficulty-select {
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.diff-title {
+  font-size: 13px;
+  letter-spacing: 4px;
+  color: #7a8a7f;
+  margin-bottom: 10px;
+}
+
+.diff-options {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.diff-btn {
+  padding: 8px 22px;
+  font-size: 14px;
+  letter-spacing: 2px;
+  background: #171f1a;
+  border: 1px solid #33443a;
+  color: #9aa39b;
+}
+
+.diff-btn.active {
+  background: #2c3a2e;
+  border-color: #7aa580;
+  color: #eaf0ea;
+  box-shadow: 0 0 14px rgba(120, 180, 140, 0.35);
+}
+
+.diff-desc {
+  margin-top: 12px;
+  min-height: 34px;
+  max-width: 520px;
+  font-size: 13px;
+  color: #8f978f;
+  line-height: 1.5;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-8px); }
+  75% { transform: translateX(8px); }
+}
