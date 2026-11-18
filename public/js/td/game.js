@@ -29,16 +29,37 @@ class TDGame {
     TDLevel.load(i);
     this.night = i;
     this.player.reset();
+    const def = TDLevel.def || {};
+    if (def.startBattery != null) this.player.battery = def.startBattery;
     this.slenders = TDLevel.slenderConfigs.map((c) => new TDSlender(c));
+    this.dormant = !!def.dormant;          // el Esbelto aun no despierta (guion)
     this.static = 0; this.corruption = 0; this._lastFoot = 0; this.paused = false;
     this.channelGen = null; this.channelT = 0; this.channelPoint = null; this.channelBlocked = false;
     this.genCharges = (typeof Difficulty !== "undefined") ? Difficulty.get().genCharges : 2;
     this.ambient = TDLevel.ambient;
+    this.subtitle = null; this.hintMsg = null; this.apparitions = [];
+    this.lightFlicker = 0; this.proximity = 0;
+    this.camX = Math.max(0, this.player.x - this.W / 2); this.camY = Math.max(0, this.player.y - this.H / 2);
     Sound.startAmbience();
     this.state = "playing";
+    Story.start(this, i);
   }
   nextNight() { this.beginNight(this.night + 1); }
   retry() { this.beginNight(this.night); }
+
+  // ---- Herramientas para el guion (story.js) ----
+  say(text, secs, voice) {
+    let dur = 0;
+    if (voice) dur = Sound.playVoice(voice) || 0;
+    this.subtitle = { text, t: Math.max(secs || 3, dur + 0.6) };
+  }
+  hint(text, secs) { this.hintMsg = { text, t: secs || 4 }; }
+  appear(x, y, secs) {
+    // Figura solo visual (no persigue): se dibuja con el mismo cuerpo del Esbelto
+    this.apparitions.push({ x, y, t: secs, max: secs, state: "patrol", flicker: 0 });
+  }
+  flickerLight(secs) { this.lightFlicker = Math.max(this.lightFlicker, secs); }
+  wake() { this.dormant = false; }
 
   setPaused(p) {
     if (this.state !== "playing" && !p) { this.paused = false; return; }
@@ -57,11 +78,19 @@ class TDGame {
     const p = this.player;
     p.corruption = this.corruption;
     p.update(dt);
+    Story.update(this, dt);
+    if (this.state !== "playing") return;
+    if (this.subtitle && (this.subtitle.t -= dt) <= 0) this.subtitle = null;
+    if (this.hintMsg && (this.hintMsg.t -= dt) <= 0) this.hintMsg = null;
+    for (const a of this.apparitions) { a.t -= dt; a.flicker += dt; }
+    this.apparitions = this.apparitions.filter((a) => a.t > 0);
+    if (this.lightFlicker > 0) this.lightFlicker -= dt;
 
-    let rise = 0, anyChase = false;
-    for (const s of this.slenders) {
+    let rise = 0, anyChase = false, nearest = Infinity;
+    for (const s of (this.dormant ? [] : this.slenders)) {
       s.update(dt, p);
       if (s.state === "chase") anyChase = true;
+      nearest = Math.min(nearest, Math.hypot(s.x - p.x, s.y - p.y));
       if (!p.hidden && TDLevel.lineOfSight(p.x, p.y, s.x, s.y)) {
         const dx = s.x - p.x, dy = s.y - p.y, dist = Math.hypot(dx, dy) || 1;
         const ang = Math.acos(Math.max(-1, Math.min(1, (p.fx * dx + p.fy * dy) / dist)));
@@ -70,6 +99,12 @@ class TDGame {
         // Si la linterna lo alcanza, se enfurece y carga hacia ti
         if (p.flashlight && dist < 340 && ang < 0.55) s.onLit();
       }
+    }
+
+    // Los aparatos fallan cuando esta cerca: la linterna parpadea (por tiempo, no por cuadro)
+    this.proximity = Math.max(0, Math.min(1, 1 - nearest / 340));
+    if (p.flashlight && this.proximity > 0.15 && Math.random() < this.proximity * 4 * dt) {
+      this.lightFlicker = Math.max(this.lightFlicker, 0.08 + Math.random() * 0.3);
     }
 
     // Generadores encendidos: cuentan tiempo y ahuyentan a los Esbeltos
@@ -98,6 +133,11 @@ class TDGame {
     Sound.update(dt);
     Sound.setStatic(this.static / 100);
     Sound.setTension(Math.min(1, this.static / 100 + (anyChase ? 0.35 : 0)));
+    Sound.setProximity(this.proximity);
+    if (!this.dormant && this.slenders.length) {
+      const st = this.threatState();
+      Sound.setMusic(st === "chase" ? "chase" : st === "suspicious" ? "tension" : "calm");
+    }
     if (p.moving) {
       const foot = Math.floor(p.walkPhase / Math.PI);
       if (foot !== this._lastFoot) { Sound.footstep(p.running); this._lastFoot = foot; }
@@ -119,15 +159,20 @@ class TDGame {
   _interactions(dt) {
     const p = this.player;
     for (const b of TDLevel.batteries) {
-      if (!b.taken && Math.hypot(p.x - b.x, p.y - b.y) < 26) { b.taken = true; p.addBattery(45); this._notify("+ Bateria"); }
+      if (!b.taken && Math.hypot(p.x - b.x, p.y - b.y) < 30) {
+        b.taken = true; p.addBattery(b.amount ?? 45);
+        if (b.label) this.hint(b.label, 2.5); else this._notify("+ Bateria");
+        Story.onItem(this, b);
+      }
     }
     let nearNote = null;
-    for (const n of TDLevel.notes) if (!n.collected && Math.hypot(p.x - n.x, p.y - n.y) < 34) nearNote = n;
+    for (const n of TDLevel.notes) if (!n.collected && Math.hypot(p.x - n.x, p.y - n.y) < 40) nearNote = n;
     if (nearNote) {
       this._notify("E: examinar");
       if (Input.wasPressed("interact")) {
         nearNote.collected = true; this.state = "note";
-        this._emit("note", { kind: nearNote.kind, title: nearNote.title, text: nearNote.text });
+        this._emit("note", { kind: nearNote.kind, title: nearNote.title, text: nearNote.text, voice: nearNote.voice });
+        Story.onNote(this, nearNote);
       }
     }
 
@@ -171,10 +216,10 @@ class TDGame {
     }
 
     const e = TDLevel.exit;
-    if (Math.hypot(p.x - e.x, p.y - e.y) < 40) {
-      const st = TDLevel.canExit();
-      if (st.pagesLeft > 0) this._notify(`Faltan ${st.pagesLeft} nota(s)`);
-      else { this._notify("E: escapar"); if (Input.wasPressed("interact")) this._winNight(); }
+    if (Math.hypot(p.x - e.x, p.y - e.y) < 44) {
+      const block = Story.exitBlock(this);
+      if (block) this._notify(block);
+      else { this._notify(Story.exitPrompt()); if (Input.wasPressed("interact")) this._winNight(); }
     }
   }
 
@@ -198,7 +243,7 @@ class TDGame {
     ctx.save();
     ctx.translate(-Math.round(this.camX), -Math.round(this.camY));
     this._drawGround(ctx);
-    this.slenders.forEach((s) => s.drawCone(ctx));
+    if (!this.dormant) this.slenders.forEach((s) => s.drawCone(ctx));
     this._drawSprites(ctx);
     ctx.restore();
     // Tinte de ambiente de la noche
@@ -218,11 +263,26 @@ class TDGame {
   }
 
   _drawGround(ctx) {
-    const T = TDLevel.TILE, v = this._visibleTiles();
+    const T = TDLevel.TILE, v = this._visibleTiles(), map = TDLevel.tileMap;
     for (let r = v.r0; r <= v.r1; r++) {
       for (let c = v.c0; c <= v.c1; c++) {
-        if (TDLevel.grid[r][c] === 1) continue;
         const x = c * T, y = r * T;
+        if (map) {
+          const ch = map[r][c];
+          if (ch === "," || ch === "T") {
+            ctx.fillStyle = (r + c) % 2 ? "#16200f" : "#192412";
+            ctx.fillRect(x, y, T, T);
+          } else {
+            // Piso de madera (tablas)
+            ctx.fillStyle = (r % 2) ? "#3a2a1e" : "#36271c";
+            ctx.fillRect(x, y, T, T);
+            ctx.fillStyle = "rgba(0,0,0,0.22)";
+            ctx.fillRect(x, y + T - 2, T, 2);
+            ctx.fillRect(x + ((r * 23) % T), y, 2, T);
+          }
+          continue;
+        }
+        if (TDLevel.grid[r][c] === 1) continue;
         ctx.fillStyle = (r + c) % 2 ? "#1b2417" : "#1f2a1a";
         ctx.fillRect(x, y, T, T);
         if (TDLevel.bushes.has(r + "," + c)) {
@@ -245,21 +305,83 @@ class TDGame {
   }
 
   _drawSprites(ctx) {
-    const T = TDLevel.TILE, v = this._visibleTiles(), items = [];
+    const T = TDLevel.TILE, v = this._visibleTiles(), items = [], map = TDLevel.tileMap;
     for (let r = v.r0; r <= v.r1; r++)
       for (let c = v.c0; c <= v.c1; c++)
         if (TDLevel.grid[r][c] === 1) {
+          if (map) {
+            const ch = map[r][c];
+            if (ch === ",") continue;
+            if (ch === "T") { items.push({ y: r * T + T, fn: () => this._drawTree(ctx, c, r) }); continue; }
+            items.push({ y: r * T + T, fn: () => this._drawHouseTile(ctx, ch, c, r) });
+            continue;
+          }
           const rock = (r * 7 + c * 3) % 5 === 0;
           items.push({ y: r * T + T, fn: () => (rock ? this._drawRock(ctx, c, r) : this._drawTree(ctx, c, r)) });
         }
-    for (const b of TDLevel.batteries) if (!b.taken) items.push({ y: b.y + 10, fn: () => this._drawBattery(ctx, b) });
+    for (const b of TDLevel.batteries) if (!b.taken) items.push({ y: b.y + 10, fn: () => (b.id === "linterna" ? this._drawFlashlightItem(ctx, b) : this._drawBattery(ctx, b)) });
     for (const n of TDLevel.notes) if (!n.collected) items.push({ y: n.y + 12, fn: () => this._drawNote(ctx, n) });
     for (const g of TDLevel.generators) items.push({ y: g.y + 18, fn: () => this._drawGenerator(ctx, g) });
-    items.push({ y: TDLevel.exit.y + 22, fn: () => this._drawExit(ctx) });
+    if (!map) items.push({ y: TDLevel.exit.y + 22, fn: () => this._drawExit(ctx) });
     items.push({ y: this.player.y + 15, fn: () => this.player.draw(ctx) });
-    for (const s of this.slenders) items.push({ y: s.y + 16, fn: () => s.draw(ctx) });
+    if (!this.dormant) for (const s of this.slenders) items.push({ y: s.y + 16, fn: () => s.draw(ctx) });
+    for (const a of this.apparitions) items.push({ y: a.y + 16, fn: () => {
+      // Aparece y se desvanece, con saltos de imagen
+      const k = a.t / a.max, alpha = Math.min(1, (1 - k) * 5, k * 3);
+      if (Math.random() < 0.12) return;
+      ctx.save(); ctx.globalAlpha = Math.max(0, alpha);
+      TDSlender.prototype.draw.call(a, ctx);
+      ctx.restore();
+    } });
     items.sort((a, b) => a.y - b.y);
     for (const it of items) it.fn();
+  }
+
+  // Paredes, ventanas, puerta y muebles de la casa (vista 3/4)
+  _drawHouseTile(ctx, ch, c, r) {
+    const T = TDLevel.TILE, x = c * T, y = r * T, lift = T * 0.45;
+    if (ch === "#" || ch === "W" || ch === "D") {
+      ctx.fillStyle = "#211c26"; ctx.fillRect(x, y - lift, T, T + lift);
+      ctx.fillStyle = "#3a3344"; ctx.fillRect(x, y - lift, T, lift * 0.55);
+      ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(x, y + T - 6, T, 6);
+      if (ch === "W") {
+        ctx.fillStyle = "#1b2b4a"; ctx.fillRect(x + 6, y - lift + 12, T - 12, T - 6);
+        ctx.fillStyle = "rgba(150,180,235,0.18)"; ctx.fillRect(x + 6, y - lift + 12, T - 12, (T - 6) / 2);
+        ctx.fillStyle = "#211c26"; ctx.fillRect(x + T / 2 - 2, y - lift + 12, 4, T - 6);
+      }
+      if (ch === "D") {
+        const ready = TDLevel.notes.every((n) => n.collected);
+        ctx.fillStyle = ready ? "#6a4527" : "#4a3220"; ctx.fillRect(x + 8, y - lift + 6, T - 16, T + lift - 10);
+        ctx.fillStyle = "#d8c060"; ctx.beginPath(); ctx.arc(x + T - 16, y + T / 2 - 4, 3, 0, Math.PI * 2); ctx.fill();
+        if (ready) { ctx.fillStyle = "rgba(255,230,150,0.12)"; ctx.beginPath(); ctx.arc(x + T / 2, y, 46, 0, Math.PI * 2); ctx.fill(); }
+      }
+      return;
+    }
+    ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.fillRect(x + 3, y + T - 8, T - 6, 8);
+    if (ch === "B") {        // cama
+      ctx.fillStyle = "#2c3a5a"; ctx.fillRect(x + 2, y + 2, T - 4, T - 6);
+      ctx.fillStyle = "#3a4c72"; ctx.fillRect(x + 4, y + 8, T - 8, T - 16);
+      if (TDLevel.tileMap[r - 1] && TDLevel.tileMap[r - 1][c] !== "B") { ctx.fillStyle = "#cfcfd8"; ctx.fillRect(x + 8, y + 4, T - 16, 12); }
+    } else if (ch === "K") { // barra de cocina
+      ctx.fillStyle = "#4a4650"; ctx.fillRect(x, y - 10, T, T + 4);
+      ctx.fillStyle = "#6a6672"; ctx.fillRect(x, y - 10, T, 12);
+    } else if (ch === "O") { // sillon
+      ctx.fillStyle = "#4a2226"; ctx.fillRect(x + 1, y + 6, T - 2, T - 10);
+      ctx.fillStyle = "#5e2c31"; ctx.fillRect(x + 1, y - 4, T - 2, 14);
+    } else if (ch === "M") { // mesa
+      ctx.fillStyle = "#5a3e26"; ctx.fillRect(x + 4, y + 4, T - 8, T - 14);
+      ctx.fillStyle = "#6c4b2e"; ctx.fillRect(x + 4, y + 4, T - 8, 6);
+    } else if (ch === "F") { // refri
+      ctx.fillStyle = "#b8bcc4"; ctx.fillRect(x + 6, y - lift, T - 12, T + lift - 4);
+      ctx.fillStyle = "#8a8e96"; ctx.fillRect(x + 6, y - lift + 22, T - 12, 3);
+    }
+  }
+
+  _drawFlashlightItem(ctx, b) {
+    const bob = Math.sin(Date.now() / 280) * 2, y = b.y + bob;
+    ctx.fillStyle = "rgba(255,240,180,0.16)"; ctx.beginPath(); ctx.arc(b.x, y, 16, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#2a2a30"; ctx.fillRect(b.x - 12, y - 4, 18, 8);
+    ctx.fillStyle = "#c8a040"; ctx.fillRect(b.x + 6, y - 6, 6, 12);
   }
 
   _drawTree(ctx, c, r) {
@@ -319,6 +441,9 @@ class TDGame {
     const px = p.x - this.camX, py = p.y - this.camY;
     const fear = this.static / 100;
     const base = (this.ambient && this.ambient.dark) ? this.ambient.dark : 0.62;
+    // Parpadeo: la linterna y la luz cercana fallan cuando el esta cerca (o por guion)
+    const flick = this.lightFlicker > 0 && Math.random() < 0.65;
+    const lightOn = p.flashlight && !flick;
 
     lx.globalCompositeOperation = "source-over";
     lx.clearRect(0, 0, W, H);
@@ -326,12 +451,12 @@ class TDGame {
     lx.fillRect(0, 0, W, H);
     lx.globalCompositeOperation = "destination-out";
 
-    const ambR = 210;
+    const ambR = flick ? 110 : 210;
     const amb = lx.createRadialGradient(px, py, 40, px, py, ambR);
     amb.addColorStop(0, "rgba(0,0,0,1)"); amb.addColorStop(0.55, "rgba(0,0,0,0.85)"); amb.addColorStop(1, "rgba(0,0,0,0)");
     lx.fillStyle = amb; lx.beginPath(); lx.arc(px, py, ambR, 0, Math.PI * 2); lx.fill();
 
-    if (p.flashlight) {
+    if (lightOn) {
       const ang = Math.atan2(p.fy, p.fx), spread = 0.5, len = 330;
       lx.save();
       lx.beginPath(); lx.moveTo(px, py); lx.arc(px, py, len, ang - spread, ang + spread); lx.closePath(); lx.clip();
@@ -352,7 +477,7 @@ class TDGame {
     lx.globalCompositeOperation = "source-over";
     ctx.drawImage(this.lightCanvas, 0, 0);
 
-    if (p.flashlight) {
+    if (lightOn) {
       const ang = Math.atan2(p.fy, p.fx), spread = 0.5, len = 330;
       ctx.save();
       ctx.beginPath(); ctx.moveTo(px, py); ctx.arc(px, py, len, ang - spread, ang + spread); ctx.closePath(); ctx.clip();
@@ -382,17 +507,41 @@ class TDGame {
     };
     bar(20, 20, 200, 16, this.static / 100, this.static > 70 ? "#c02020" : "#7a7f90", "ESTATICA");
     bar(20, 44, 200, 11, this.player.stamina / 100, "#3a7a9a", "AGUANTE");
-    bar(20, 62, 200, 11, this.player.battery / 100, this.player.battery < 25 ? "#c08020" : "#c0b040", "BATERIA");
+    const story = !!(TDLevel.def && TDLevel.def.hud && TDLevel.def.hud.story);
+    if (!story || this.player.battery > 0) {
+      // Cerca de el, la etiqueta de la bateria se corrompe
+      const lbl = this.proximity > 0.5 && Math.random() < this.proximity * 0.6 ? "B#T3R!A" : "BATERIA";
+      bar(20, 62, 200, 11, this.player.battery / 100, this.player.battery < 25 ? "#c08020" : "#c0b040", lbl);
+    }
 
     ctx.fillStyle = "#8a9a8a"; ctx.font = "13px 'Trebuchet MS', sans-serif";
-    ctx.fillText(`NOCHE ${this.night + 1}: ${TDLevel.name}`, 20, 90);
+    ctx.fillText(`${TDLevel.label || "NOCHE " + this.night}: ${TDLevel.name}`, 20, 90);
 
     ctx.fillStyle = "#dfe6df"; ctx.font = "16px 'Trebuchet MS', sans-serif"; ctx.textAlign = "right";
     const got = TDLevel.notes.filter((n) => n.collected).length;
-    ctx.fillText(`Notas: ${got}/${TDLevel.notes.length}`, this.W - 20, 32);
-    ctx.fillText(`Focos: ${this.genCharges}`, this.W - 20, 54);
-    ctx.fillText(`Linterna: ${this.player.flashlight ? "ON" : "OFF"}`, this.W - 20, 76);
+    ctx.fillText(`${story ? "Pistas" : "Notas"}: ${got}/${TDLevel.notes.length}`, this.W - 20, 32);
+    if (TDLevel.generators.length) ctx.fillText(`Focos: ${this.genCharges}`, this.W - 20, 54);
+    if (!story || this.player.battery > 0) ctx.fillText(`Linterna: ${this.player.flashlight ? "ON" : "OFF"}`, this.W - 20, TDLevel.generators.length ? 76 : 54);
     ctx.textAlign = "left";
+
+    // Pista de controles / objetivo (arriba, discreta)
+    if (this.hintMsg) {
+      const a = Math.min(1, this.hintMsg.t);
+      ctx.save(); ctx.globalAlpha = a * 0.85;
+      ctx.fillStyle = "#b9c4b9"; ctx.font = "14px 'Trebuchet MS', sans-serif"; ctx.textAlign = "center";
+      ctx.fillText(this.hintMsg.text, this.W / 2, 72);
+      ctx.restore();
+    }
+    // Subtitulo de lo que dice Alex (abajo, estilo cine)
+    if (this.subtitle) {
+      const a = Math.min(1, this.subtitle.t * 2);
+      ctx.save(); ctx.globalAlpha = a;
+      ctx.font = "italic 19px Georgia, 'Times New Roman', serif"; ctx.textAlign = "center";
+      const w = ctx.measureText(this.subtitle.text).width + 40;
+      ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.fillRect(this.W / 2 - w / 2, this.H - 112, w, 34);
+      ctx.fillStyle = "#efe9da"; ctx.fillText(this.subtitle.text, this.W / 2, this.H - 89);
+      ctx.restore();
+    }
 
     const st = this.threatState();
     if (st === "chase" && !this.player.hidden) {

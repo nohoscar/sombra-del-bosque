@@ -75,6 +75,7 @@ const Sound = {
 
     this.started = true;
     this._nextBeat = this.ctx.currentTime + 1;
+    this._initMusic();
     this.loadClips();
   },
 
@@ -104,12 +105,241 @@ const Sound = {
         this.clips[key] = await this.ctx.decodeAudioData(arr);
       } catch (e) { /* sin clip: usamos procedural */ }
     }
+    // Voces del modo historia (si faltan, el juego solo muestra el subtitulo)
+    for (const key of this.VOICES) {
+      try {
+        const res = await fetch(`audio/voz/${key}.mp3`);
+        if (!res.ok) continue;
+        this.voices[key] = await this.ctx.decodeAudioData(await res.arrayBuffer());
+      } catch (e) { /* sin voz */ }
+    }
+  },
+
+  // ================= VOCES =================
+  VOICES: [
+    "op_1", "op_2", "op_3", "pr_tommy", "pr_contestadora", "pr_dibujo", "pr_ventana", "pr_caja",
+    "pr_linterna", "pr_salir", "in_1", "n1_inicio", "n1_arbusto", "n1_ahi", "n1_huellas", "n1_miller",
+    "n1_baliza", "n1_tommy",
+  ],
+  voices: {},
+  _voiceSrc: null,
+
+  hasVoice(key) { return !!(this.voices && this.voices[key]); },
+
+  // Reproduce una voz; devuelve su duracion (0 si no existe)
+  playVoice(key) {
+    if (!this.started || !this.voices[key]) return 0;
+    this.stopVoice();
+    const ctx = this.ctx, t = ctx.currentTime;
+    const src = ctx.createBufferSource();
+    src.buffer = this.voices[key];
+    let node = src;
+    // Contestadora y dictafono: suenan por un altavoz viejo
+    if (key === "pr_contestadora" || key === "n1_miller") {
+      const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 420;
+      const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 3000;
+      const sh = ctx.createWaveShaper(); sh.curve = this._crunch(); 
+      node.connect(hp); hp.connect(lp); lp.connect(sh); node = sh;
+      // siseo de cinta debajo
+      const hiss = ctx.createBufferSource(); hiss.buffer = this._noiseBuf; hiss.loop = true;
+      const hg = ctx.createGain(); hg.gain.value = 0.025;
+      const hb = ctx.createBiquadFilter(); hb.type = "highpass"; hb.frequency.value = 2500;
+      hiss.connect(hb); hb.connect(hg); hg.connect(this.master);
+      hiss.start(t); hiss.stop(t + src.buffer.duration + 0.3);
+    }
+    const g = ctx.createGain(); g.gain.value = 1.0;
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    // La voz de Tommy no viene de un lugar fijo: se mueve de un oido al otro
+    if (pan && key === "n1_tommy") {
+      pan.pan.setValueAtTime(-0.9, t);
+      pan.pan.linearRampToValueAtTime(0.9, t + src.buffer.duration);
+      g.gain.value = 0.42; // esta grabacion salio mas fuerte
+    }
+    node.connect(g);
+    if (pan) { g.connect(pan); pan.connect(this.master); } else g.connect(this.master);
+    // La musica se hace a un lado mientras hablan
+    if (this._musicBus) {
+      this._musicBus.gain.setTargetAtTime(0.45, t, 0.2);
+      this._musicBus.gain.setTargetAtTime(1, t + src.buffer.duration, 0.6);
+    }
+    src.start(t);
+    this._voiceSrc = src;
+    return src.buffer.duration;
+  },
+
+  stopVoice() {
+    if (this._voiceSrc) { try { this._voiceSrc.stop(); } catch (e) {} this._voiceSrc = null; }
+    if (this._musicBus && this.ctx) this._musicBus.gain.setTargetAtTime(1, this.ctx.currentTime, 0.4);
+  },
+
+  _crunch() {
+    if (this.__crunch) return this.__crunch;
+    const n = 1024, c = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(x * 2.2); }
+    return (this.__crunch = c);
+  },
+
+  // ================= MUSICA QUE CAMBIA EN VIVO =================
+  // Capas: zumbido grave (siempre), cuerdas tensas (sospecha) y percusion (persecucion).
+  _initMusic() {
+    const ctx = this.ctx;
+    this._musicBus = ctx.createGain(); this._musicBus.gain.value = 1;
+    this._musicBus.connect(this.master);
+    // Reverb casera para la caja de musica y los golpes
+    this._reverb = ctx.createConvolver();
+    const len = ctx.sampleRate * 3.2, ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6);
+    }
+    this._reverb.buffer = ir;
+    const rvGain = ctx.createGain(); rvGain.gain.value = 0.55;
+    this._reverb.connect(rvGain); rvGain.connect(this._musicBus);
+
+    const layer = (freqs, type, cutoff, detune) => {
+      const g = ctx.createGain(); g.gain.value = 0;
+      const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = cutoff;
+      freqs.forEach((f, i) => {
+        const o = ctx.createOscillator(); o.type = type; o.frequency.value = f;
+        o.detune.value = (i % 2 ? 1 : -1) * detune;
+        o.connect(lp); o.start();
+      });
+      lp.connect(g); g.connect(this._musicBus);
+      return { g, lp };
+    };
+    this._drone = layer([55, 55.4, 82.4], "triangle", 260, 4);
+    this._strings = layer([110, 116.5, 155.6, 164.8], "sawtooth", 650, 9);
+    // El filtro de las cuerdas "respira" despacio
+    const lfo = ctx.createOscillator(), lg = ctx.createGain();
+    lfo.frequency.value = 0.07; lg.gain.value = 380;
+    lfo.connect(lg); lg.connect(this._strings.lp.frequency); lfo.start();
+    this._strings.g.connect(this._reverb);
+    // Zumbido electrico cuando el esta cerca (los aparatos fallan)
+    this._buzz = ctx.createGain(); this._buzz.gain.value = 0;
+    const bo = ctx.createOscillator(); bo.type = "square"; bo.frequency.value = 60;
+    const bb = ctx.createBiquadFilter(); bb.type = "bandpass"; bb.frequency.value = 180; bb.Q.value = 3;
+    bo.connect(bb); bb.connect(this._buzz); this._buzz.connect(this.master); bo.start();
+
+    this._music = "off"; this._chase = 0; this._nextDrum = 0; this._drumStep = 0;
+    this._nextWhisper = ctx.currentTime + 20;
+  },
+
+  setMusic(state) {
+    if (!this.started || !this._drone || state === this._music) return;
+    this._music = state;
+    const t = this.ctx.currentTime;
+    const L = {
+      off: [0, 0, 0], home: [0.05, 0, 0], calm: [0.085, 0.012, 0],
+      tension: [0.1, 0.05, 0], chase: [0.11, 0.085, 1],
+    }[state] || [0, 0, 0];
+    const tc = state === "chase" ? 0.25 : 1.4;
+    this._drone.g.gain.setTargetAtTime(L[0], t, tc);
+    this._strings.g.gain.setTargetAtTime(L[1], t, tc);
+    this._chase = L[2];
+    if (state === "chase") this._nextDrum = t + 0.05;
+  },
+
+  setProximity(v) {
+    this._prox = Math.max(0, Math.min(1, v || 0));
+    if (!this._buzz) return;
+    // Interferencia que tartamudea, no un tono limpio
+    const jitter = this._prox > 0.2 && Math.random() < 0.3 ? 0 : 1;
+    this._buzz.gain.setTargetAtTime(this._prox * this._prox * 0.035 * jitter, this.ctx.currentTime, 0.03);
+  },
+
+  // Silencio total un instante antes de un susto
+  silence(sec) {
+    if (!this.started) return;
+    const t = this.ctx.currentTime, full = this.muted ? 0 : 0.9;
+    this.master.gain.cancelScheduledValues(t);
+    this.master.gain.setTargetAtTime(full * 0.04, t, 0.08);
+    this.master.gain.setTargetAtTime(full, t + sec, 0.02);
+  },
+
+  // Golpe de aparicion: impacto grave + chirrido de cuerdas
+  hit() {
+    if (!this.started) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "sine"; o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(28, t + 1.2);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.8, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+    o.connect(g); g.connect(this.master); o.connect(this._reverb); o.start(t); o.stop(t + 1.7);
+    [1760, 1864, 2093].forEach((f) => {
+      const s = ctx.createOscillator(), sg = ctx.createGain();
+      s.type = "sawtooth"; s.frequency.setValueAtTime(f, t); s.frequency.linearRampToValueAtTime(f * 0.94, t + 1.4);
+      sg.gain.setValueAtTime(0.0001, t); sg.gain.exponentialRampToValueAtTime(0.05, t + 0.05); sg.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
+      s.connect(sg); sg.connect(this._reverb); sg.connect(this.master); s.start(t); s.stop(t + 1.6);
+    });
+  },
+
+  // Tema de Tommy: caja de musica. "roto" = mas lento y desafinado
+  theme(roto) {
+    if (!this.started) return;
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.1;
+    const A = 440, n = (s) => A * Math.pow(2, s / 12);
+    const mel = [[7, .45], [12, .45], [15, .45], [14, .45], [12, .9], [7, .45], [10, .45], [8, .45], [7, 1.4]];
+    let t = t0;
+    mel.forEach(([semi, d], i) => {
+      const f = n(semi) * (roto ? 1 + (Math.random() - 0.5) * 0.03 : 1);
+      [1, 2.01, 3.98].forEach((mul, k) => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = k ? "sine" : "triangle"; o.frequency.value = f * mul;
+        const v = [0.07, 0.025, 0.01][k];
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+        o.connect(g); g.connect(this._musicBus); g.connect(this._reverb);
+        o.start(t); o.stop(t + 1.7);
+      });
+      t += d * (roto ? 1.35 + i * 0.05 : 1);
+    });
+  },
+
+  // Percusion de persecucion y susurros que rodean (se llaman desde update)
+  _musicTick() {
+    const ctx = this.ctx, t = ctx.currentTime;
+    if (this._chase > 0 && t >= this._nextDrum - 0.1) {
+      const step = this._drumStep++ % 8, when = Math.max(t, this._nextDrum);
+      if (step === 0 || step === 3 || step === 6) this._drum(when, 0.5, 58);
+      if (step === 4) this._drum(when, 0.3, 110);
+      this._tick(when, step % 2 ? 0.02 : 0.035);
+      this._nextDrum = when + 60 / 150 / 2;
+    }
+    // Con mucha estatica, alguien susurra a tu alrededor
+    if (this._static > 0.55 && t >= this._nextWhisper) {
+      const keys = ["whisper1", "whisper2", "whisper3"].filter((k) => this.clips[k]);
+      if (keys.length) {
+        const src = ctx.createBufferSource(); src.buffer = this.clips[keys[Math.floor(Math.random() * keys.length)]];
+        const g = ctx.createGain(); g.gain.value = 0.12;
+        const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2200;
+        src.connect(lp); lp.connect(g);
+        if (ctx.createStereoPanner) {
+          const p = ctx.createStereoPanner(); const side = Math.random() < 0.5 ? -1 : 1;
+          p.pan.setValueAtTime(side, t); p.pan.linearRampToValueAtTime(-side * 0.6, t + 3);
+          g.connect(p); p.connect(this.master);
+        } else g.connect(this.master);
+        src.start(t); src.stop(t + 3.5);
+      }
+      this._nextWhisper = t + 9 + Math.random() * 10;
+    }
+  },
+  _drum(when, vol, f) {
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = "sine"; o.frequency.setValueAtTime(f * 2, when); o.frequency.exponentialRampToValueAtTime(f * 0.6, when + 0.18);
+    g.gain.setValueAtTime(0.0001, when); g.gain.exponentialRampToValueAtTime(vol, when + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, when + 0.35);
+    o.connect(g); g.connect(this._musicBus); o.start(when); o.stop(when + 0.4);
+  },
+  _tick(when, vol) {
+    const s = this.ctx.createBufferSource(); s.buffer = this._noiseBuf;
+    const hp = this.ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 6000;
+    const g = this.ctx.createGain(); g.gain.setValueAtTime(vol, when); g.gain.exponentialRampToValueAtTime(0.0001, when + 0.05);
+    s.connect(hp); hp.connect(g); g.connect(this._musicBus); s.start(when, Math.random()); s.stop(when + 0.06);
   },
 
   // ---- Bucle: programa el latido según la tensión ----
   update(dt) {
     if (!this.started) return;
     const t = this.ctx.currentTime;
+    if (this._drone) this._musicTick();
 
     // Latido: intervalo y volumen según tensión
     if (this._tension > 0.12) {
@@ -151,6 +381,8 @@ const Sound = {
 
   stopAmbience() {
     if (!this.started) return;
+    this.setMusic("off");
+    this.setProximity(0);
     this._windGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.6);
     this.setStatic(0);
     this.setTension(0);
@@ -247,7 +479,12 @@ const Sound = {
       const lp = this.ctx.createBiquadFilter();
       lp.type = "lowpass";
       lp.frequency.value = 1700; // borra la inteligibilidad
-      src.connect(lp); lp.connect(this._readGain);
+      // El susurro se mueve alrededor de tu cabeza (con audifonos)
+      if (this.ctx.createStereoPanner) {
+        const pn = this.ctx.createStereoPanner(), plfo = this.ctx.createOscillator(), pg = this.ctx.createGain();
+        plfo.frequency.value = 0.18; pg.gain.value = 0.85; plfo.connect(pg); pg.connect(pn.pan); plfo.start();
+        src.connect(lp); lp.connect(pn); pn.connect(this._readGain); this._readNodes.push(plfo);
+      } else src.connect(lp), lp.connect(this._readGain);
       src.start();
       this._readNodes.push(src);
     } else {

@@ -59,7 +59,7 @@ window.addEventListener("load", () => {
   setDiff("normal");
 
   // Guardado
-  const SAVE_KEY = "sombra_td_progreso";
+  const SAVE_KEY = "sombra_historia_v1";
   const loadProgress = () => {
     const v = parseInt(localStorage.getItem(SAVE_KEY) || "0", 10);
     return isNaN(v) ? 0 : Math.max(0, Math.min(v, TDLevel.totalNights - 1));
@@ -68,17 +68,17 @@ window.addEventListener("load", () => {
   const continueBtn = $("continue-btn");
   const refreshContinue = () => {
     const u = loadProgress();
-    if (u > 0) { continueBtn.textContent = `CONTINUAR (NOCHE ${u + 1})`; show(continueBtn); }
+    if (u > 0) { continueBtn.textContent = `CONTINUAR (${TDLevel.getInfo(u).label})`; show(continueBtn); }
     else hide(continueBtn);
   };
   refreshContinue();
 
   function showNightIntro(i) {
     const info = TDLevel.getInfo(i);
-    nightLabel.textContent = `NOCHE ${info.num} DE ${TDLevel.totalNights}`;
+    nightLabel.textContent = info.num === 0 ? "PROLOGO" : `NOCHE ${info.num} DE ${TDLevel.totalNights - 1}`;
     nightTitle.textContent = info.name;
-    nightText.textContent = info.intro;
-    nightBtn.textContent = info.num === 1 ? "ENTRAR AL BOSQUE" : "CONTINUAR";
+    nightText.textContent = info.intro || "";
+    nightBtn.textContent = info.button || (info.num === 1 ? "ENTRAR AL BOSQUE" : "CONTINUAR");
     show(nightScreen);
     nightBtn.onclick = () => {
       hide(nightScreen);
@@ -96,20 +96,24 @@ window.addEventListener("load", () => {
     currentText = doc.text;
     show(noteScreen);
     typeNote(noteText, doc.text);
-    Sound.startReading();
+    if (doc.voice && Sound.hasVoice(doc.voice)) Sound.playVoice(doc.voice);
+    else Sound.startReading();
   });
   game.on("nightcomplete", (d) => {
     saveProgress(d.completed);
-    nightLabel.textContent = "SOBREVIVISTE";
-    nightTitle.textContent = `Noche ${d.completed} superada`;
-    nightText.textContent = "El sol asoma un instante entre los arboles y vuelve a ocultarse.\nOtra noche cae. El bosque despierta, mas hambriento que antes.";
+    const done = TDLevel.getInfo(d.completed - 1);
+    nightLabel.textContent = d.completed === 1 ? "PROLOGO" : "SOBREVIVISTE";
+    nightTitle.textContent = d.completed === 1 ? "Tommy no esta" : `${done.label} superada`;
+    nightText.textContent = done.outro || "El sol asoma un instante entre los arboles y vuelve a ocultarse.\nOtra noche cae. El bosque despierta, mas hambriento que antes.";
+    const ov = TDLevel._defs[d.completed - 1].outroVoice;
+    if (ov) setTimeout(() => Sound.playVoice(ov), 900);
     nightBtn.textContent = "SIGUIENTE NOCHE";
     show(nightScreen);
     nightBtn.onclick = () => { hide(nightScreen); showNightIntro(d.completed); };
   });
   game.on("gameover", (d) => {
     Cinematic.play(Cinematic.DEATH, () => {
-      gameoverText.textContent = `Caiste en la Noche ${d.night}. El bosque te reclamo, como a los demas.`;
+      gameoverText.textContent = `Caiste en ${TDLevel.getInfo(d.night - 1).label}. El bosque te reclamo, como a los demas.`;
       show(gameoverScreen);
     });
   });
@@ -121,6 +125,7 @@ window.addEventListener("load", () => {
   $("start-btn").addEventListener("click", () => { hide(startScreen); Cinematic.play(Cinematic.OPENING, () => showNightIntro(0)); });
   continueBtn.addEventListener("click", () => { hide(startScreen); showNightIntro(loadProgress()); });
   $("retry-btn").addEventListener("click", () => { hide(gameoverScreen); game.retry(); });
+  nightBtn.addEventListener("click", () => Sound.stopVoice());
   $("win-btn").addEventListener("click", () => { hide(winScreen); refreshContinue(); show(startScreen); });
   $("note-btn").addEventListener("click", () => {
     if (noteTyping) { clearInterval(typeTimer); noteText.textContent = currentText; noteTyping = false; return; }
@@ -137,6 +142,10 @@ window.addEventListener("load", () => {
   $("tomenu-btn").addEventListener("click", () => {
     hide(pauseScreen); Sound.stopAmbience(); game.state = "menu"; show(startScreen); refreshContinue();
   });
+
+  // Si cambias de pestana o llega una llamada, el juego se pausa solo
+  document.addEventListener("visibilitychange", () => { if (document.hidden) doPause(); });
+  window.addEventListener("blur", () => doPause());
 
   window.addEventListener("keydown", (e) => {
     if (Cinematic.active && e.code === "Escape") { Cinematic.skipAll(); return; }

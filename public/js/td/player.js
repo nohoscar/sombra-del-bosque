@@ -44,7 +44,7 @@ class TDPlayer {
       if (this.glitchKind === 0) { ix = -ix; iy = -iy; }      // control invertido
       else if (this.glitchKind === 1) { ix = 0; iy = 0; }     // tropiezo
       else { ix += (Math.random() - 0.5) * 1.5; iy += (Math.random() - 0.5) * 1.5; }
-    } else if (this.corruption > 0.35 && Math.random() < this.corruption * 0.05) {
+    } else if (this.corruption > 0.35 && Math.random() < this.corruption * 3 * dt) {
       this.glitchTimer = 0.18 + Math.random() * 0.22;
       this.glitchKind = Math.floor(Math.random() * 3);
     }

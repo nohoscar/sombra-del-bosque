@@ -26,6 +26,7 @@ const Cinematic = {
   skipAll() {
     if (!this.active) return;
     this.active = false;
+    if (typeof Sound !== "undefined") Sound.stopVoice();
     const cb = this.onDone;
     this.onDone = null;
     if (cb) cb();
@@ -38,14 +39,21 @@ const Cinematic = {
 
     if (this.phase === "in") {
       this.fade = 1 - Math.min(1, this.t / IN);
-      if (this.t >= IN) { this.phase = "hold"; this.t = 0; }
+      if (this.t >= IN) {
+        this.phase = "hold"; this.t = 0;
+        const sc = this.scenes[this.index];
+        this._voiceDur = 0;
+        if (sc && sc.voice && typeof Sound !== "undefined") this._voiceDur = Sound.playVoice(sc.voice) || 0;
+        if (sc && sc.theme && typeof Sound !== "undefined") Sound.theme(sc.theme === "roto");
+        if (sc && sc.hit && typeof Sound !== "undefined") Sound.hit();
+      }
     } else if (this.phase === "hold") {
       this.fade = 0;
       const scene = this.scenes[this.index];
-      const maxHold = (scene && scene.hold) ? scene.hold : MAXHOLD;
+      const maxHold = Math.max((scene && scene.hold) ? scene.hold : MAXHOLD, (this._voiceDur || 0) + 1.2);
       const canSkip = this.t > 0.35;
       const pressed = this._advance || Input.wasPressed("jump") || Input.wasPressed("interact");
-      if (pressed && canSkip) { this.phase = "out"; this.t = 0; }
+      if (pressed && canSkip) { this.phase = "out"; this.t = 0; if (typeof Sound !== "undefined") Sound.stopVoice(); }
       else if (this.t > maxHold) { this.phase = "out"; this.t = 0; }
       this._advance = false;
     } else if (this.phase === "out") {
@@ -202,7 +210,8 @@ const Cinematic = {
 // ---------------- Escena de apertura ----------------
 Cinematic.OPENING = [
   {
-    caption: "Otro dia agotador en el pueblo de Willow Creek.\nSolo quieres llegar a casa y dormir.",
+    caption: "Papa tenia turno doble esa noche.\nMe tocaba cuidar a Tommy. Como siempre.",
+    voice: "op_1",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#12142a", "#243049");
       Cinematic._stars(ctx, W, H, 60, t);
@@ -250,7 +259,8 @@ Cinematic.OPENING = [
     },
   },
   {
-    caption: "Pero al voltear hacia el bosque...\nalgo alto y quieto te devuelve la mirada.",
+    caption: "Al pasar junto al bosque, senti que algo me miraba.\nAlgo alto. Quieto.",
+    voice: "op_2",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#0f1124", "#1d2338");
       Cinematic._stars(ctx, W, H, 50, t);
@@ -270,7 +280,8 @@ Cinematic.OPENING = [
     },
   },
   {
-    caption: "En casa, la puerta del cuarto de Tommy esta abierta.\nSu cama, vacia. La ventana, de par en par.",
+    caption: "Cuando llegue, la casa estaba a oscuras.\nY la ventana del cuarto de Tommy, abierta de par en par.",
+    voice: "op_3",
     draw(ctx, t, W, H) {
       // Interior del cuarto, luz de luna azul
       Cinematic._sky(ctx, W, H, "#161a2e", "#0e1120");
@@ -318,8 +329,36 @@ Cinematic.OPENING = [
       ctx.fillRect(W * 0.42, H - 170, 26, 30);
     },
   },
+];
+
+// ---------------- Helpers extra ----------------
+Cinematic._stoneCircle = function (ctx, cx, y, rx, names) {
+  ctx.strokeStyle = "#3a3540";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.ellipse(cx, y, rx, rx * 0.35, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  // piedras verticales alrededor
+  const n = 7;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const sx = cx + Math.cos(a) * rx;
+    const sy = y + Math.sin(a) * rx * 0.35;
+    ctx.fillStyle = "#413b47";
+    ctx.fillRect(sx - 4, sy - 16, 8, 16);
+    ctx.fillStyle = "#2a2530";
+    ctx.fillRect(sx - 2, sy - 12, 4, 10);
+  }
+};
+
+// ---------------- Interludios entre noches (índice = noche que empieza) ----------------
+Cinematic.INTERLUDES = {
+  // Antes de la Noche 1
+  1: [
   {
-    caption: "No puedes quedarte esperando.\nTomas una linterna y entras al bosque a buscarlo.",
+    caption: "Segui sus huellas hasta donde empiezan los pinos.\nNo le avise a nadie. Quien me iba a creer.",
+    voice: "in_1",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#0c0e1c", "#181c2c");
       Cinematic._stars(ctx, W, H, 40, t);
@@ -347,33 +386,9 @@ Cinematic.OPENING = [
       ctx.fill();
     },
   },
-];
-
-// ---------------- Helpers extra ----------------
-Cinematic._stoneCircle = function (ctx, cx, y, rx, names) {
-  ctx.strokeStyle = "#3a3540";
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.ellipse(cx, y, rx, rx * 0.35, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.lineWidth = 1;
-  // piedras verticales alrededor
-  const n = 7;
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2;
-    const sx = cx + Math.cos(a) * rx;
-    const sy = y + Math.sin(a) * rx * 0.35;
-    ctx.fillStyle = "#413b47";
-    ctx.fillRect(sx - 4, sy - 16, 8, 16);
-    ctx.fillStyle = "#2a2530";
-    ctx.fillRect(sx - 2, sy - 12, 4, 10);
-  }
-};
-
-// ---------------- Interludios entre noches (índice = noche que empieza) ----------------
-Cinematic.INTERLUDES = {
+  ],
   // Antes de la Noche 2
-  1: [{
+  2: [{
     caption: "El sendero muere en un campamento de verano abandonado.\nUn arco podrido: 'CAMPAMENTO WILLOW'. Cerrado hace decadas.",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#0f1124", "#1b2036");
@@ -414,7 +429,7 @@ Cinematic.INTERLUDES = {
     },
   }],
   // Antes de la Noche 3
-  2: [{
+  3: [{
     caption: "Entre los pinos aparece la vieja estacion de guardabosques.\nVentanas rotas. La radio, muda desde hace anos.",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#0e1022", "#1a1e34");
@@ -456,7 +471,7 @@ Cinematic.INTERLUDES = {
     },
   }],
   // Antes de la Noche 4
-  3: [{
+  4: [{
     caption: "Un claro con circulos de piedra.\nNombres de ninos tallados. El ultimo dice: TOMMY.",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#14122a", "#241a2c");
@@ -472,7 +487,7 @@ Cinematic.INTERLUDES = {
     },
   }],
   // Antes de la Noche 5
-  4: [{
+  5: [{
     caption: "Tres sombras te siguen ahora.\n'No mires atras, hermano', susurra Tommy. 'Corre'.",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#1a0e18", "#2a1216");
