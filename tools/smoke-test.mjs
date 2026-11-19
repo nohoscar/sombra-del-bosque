@@ -96,6 +96,46 @@ for (let k = 0; k < 3; k++) { const n = TDLevel.notes[k]; tp(n.x, n.y); step(2);
 step(60 * 7);
 ok(Story.flags.llamado, "la voz falsa de Tommy te llama");
 ok(game.state === "playing", `sigue jugando tras el susto (estado: ${game.state})`);
+{
+  const cabs = TDLevel.props.filter((q) => q.kind === "cabana");
+  ok(cabs.length === 4, "hay 4 cabanas");
+  const s0 = TDLevel.tileAtPx(TDLevel.start.x, TDLevel.start.y);
+  for (const [i, cb] of cabs.entries()) {
+    const dt0 = TDLevel.tileAtPx(cb.door.x, cb.door.y);
+    ok(!TDLevel.circleHitsWall(cb.door.x, cb.door.y, 16) && TDLevel.findPath(s0.c, s0.r, dt0.c, dt0.r) !== null, `la puerta de la cabana ${i + 1} se alcanza`);
+  }
+  for (const n of TDLevel.notes) n.collected = true;
+  tp(TDLevel.exit.x, TDLevel.exit.y); step(2); press("interact");
+  ok(game.state === "playing", "no puedes salir sin revisar las cabanas");
+  for (const cb of cabs) { tp(cb.door.x, cb.door.y); step(2); press("interact"); step(20); }
+  ok(cabs.every((q) => q.checked), "se revisan las 4 cabanas");
+  step(60 * 7);
+  for (const b of TDLevel.batteries) { const bt = TDLevel.tileAtPx(b.x, b.y); ok(TDLevel.grid[bt.r][bt.c] === 0, "bateria fuera de las paredes"); }
+  tp(TDLevel.exit.x, TDLevel.exit.y); step(2); press("interact");
+  ok(game.state === "nightcomplete", "con todo revisado, sales del campamento");
+  game.beginNight(2);
+  const s1 = TDLevel.tileAtPx(TDLevel.start.x, TDLevel.start.y);
+  for (const n of TDLevel.notes) { const t = TDLevel.tileAtPx(n.x, n.y); ok(TDLevel.findPath(s1.c, s1.r, t.c, t.r) !== null, `nota en (${t.c},${t.r}) se alcanza`); }
+  { const t = TDLevel.exit.tile; ok(TDLevel.findPath(s1.c, s1.r, t.c, t.r) !== null, "la salida se alcanza"); }
+}
+
+console.log("\nEL ESBELTO");
+{
+  game.beginNight(3);
+  const s = game.slenders[0], p = game.player;
+  s.state = "chase"; s.detection = 100;
+  ok(s.onLit() === true && s.stun > 0, "la linterna lo congela");
+  ok(s.onLit() === false, "no se puede congelar seguido");
+  const x0 = s.x; s.update(0.5, p); ok(s.x === x0, "congelado no se mueve");
+  // Esconderte justo enfrente: te encuentra
+  s.stun = 0; s.state = "chase"; s.detection = 100;
+  p.hidden = true; s.lastX = p.x; s.lastY = p.y; s.x = p.x + 20; s.y = p.y;
+  s.update(1 / 60, p);
+  ok(s.caught, "si te escondes frente a el, te encuentra");
+}
+ok(TDLevel.prints !== undefined, "datos de huellas listos");
+game.beginNight(1);
+ok(TDLevel.prints.length > 40 && TDLevel.prints.some((f) => f.big), `Noche 1 tiene rastro de huellas (${TDLevel.prints.length})`);
 
 console.log("\nNOCHES 3-5 (carga y 10 s)");
 for (let i = 3; i < TDLevel.totalNights; i++) { game.beginNight(i); step(600); ok(true, `${TDLevel.label} corre`); }

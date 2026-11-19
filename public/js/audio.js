@@ -120,14 +120,14 @@ const Sound = {
     "op_1", "op_2", "op_3", "pr_tommy", "pr_contestadora", "pr_dibujo", "pr_ventana", "pr_caja",
     "pr_linterna", "pr_salir", "in_1", "n1_inicio", "n1_arbusto", "n1_ahi", "n1_huellas", "n1_miller",
     "n1_baliza", "n1_tommy", "n2_inicio", "n2_bitacora", "n2_literas", "n2_cinta", "n2_tommy", "n2_nolo",
-    "n2_dibujo", "n2_final",
+    "n2_dibujo", "n2_final", "n2_cab1", "n2_cab2", "n2_cab3",
   ],
   voices: {},
   _voiceSrc: null,
   // Voces que suenan por un aparato viejo (contestadora, dictafono, cinta)
   _FILTERED: ["pr_contestadora", "n1_miller", "n2_cinta"],
   // Ajuste de volumen por linea (algunas grabaciones salen mas fuertes)
-  _GAIN: { n1_tommy: 0.42, n2_tommy: 0.55 },
+  _GAIN: {},   // las voces ya vienen con el mismo volumen (loudnorm)
 
   hasVoice(key) { return !!(this.voices && this.voices[key]); },
 
@@ -183,6 +183,25 @@ const Sound = {
     const n = 1024, c = new Float32Array(n);
     for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(x * 2.2); }
     return (this.__crunch = c);
+  },
+
+  // Paso del Esbelto: golpe grave y crujido de ramas, colocado a la izquierda o derecha
+  slenderStep(pan, vol) {
+    if (!this.started || vol <= 0.01) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    const out = ctx.createGain(); out.gain.value = vol;
+    let dest = out;
+    if (ctx.createStereoPanner) { const p = ctx.createStereoPanner(); p.pan.value = pan; out.connect(p); p.connect(this.master); }
+    else out.connect(this.master);
+    const o = ctx.createOscillator(), og = ctx.createGain();
+    o.type = "sine"; o.frequency.setValueAtTime(55, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.2);
+    og.gain.setValueAtTime(0.0001, t); og.gain.exponentialRampToValueAtTime(0.9, t + 0.015); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(og); og.connect(dest); o.start(t); o.stop(t + 0.32);
+    const n = ctx.createBufferSource(); n.buffer = this._noiseBuf;
+    const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 900 + Math.random() * 700; bp.Q.value = 1.2;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.0001, t); ng.gain.exponentialRampToValueAtTime(0.35, t + 0.01); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    n.connect(bp); bp.connect(ng); ng.connect(dest); n.start(t, Math.random()); n.stop(t + 0.14);
   },
 
   // ================= MENU =================

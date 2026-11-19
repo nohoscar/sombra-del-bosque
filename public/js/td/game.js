@@ -97,8 +97,24 @@ class TDGame {
         if (ang < 0.9 && dist < 440) rise = Math.max(rise, (1 - dist / 440) * 28);
         if (dist < 170) rise = Math.max(rise, 9);
         // Si la linterna lo alcanza, se enfurece y carga hacia ti
-        if (p.flashlight && dist < 340 && ang < 0.55) s.onLit();
+        // La linterna lo congela un instante, pero gasta bateria de golpe
+        if (p.flashlight && !(this.lightFlicker > 0) && dist < 340 && ang < 0.55 && s.onLit()) {
+          p.battery = Math.max(0, p.battery - 12);
+          this._notify("La luz lo detiene... por ahora");
+          Sound.glitchBurst();
+        }
       }
+    }
+
+    // Sus pasos: se oyen del lado de donde viene, antes de verlo
+    this._stepT = (this._stepT || 0) - dt;
+    if (!this.dormant && this._stepT <= 0) {
+      let near = null, nd = Infinity;
+      for (const s of this.slenders) { const d = Math.hypot(s.x - p.x, s.y - p.y); if (d < nd) { nd = d; near = s; } }
+      if (near && nd < 520 && !(near.stun > 0)) {
+        Sound.slenderStep(Math.max(-1, Math.min(1, (near.x - p.x) / 320)), (1 - nd / 520) * 0.55);
+        this._stepT = near.state === "chase" ? 0.34 : 0.8;
+      } else this._stepT = 0.4;
     }
 
     // Los aparatos fallan cuando esta cerca: la linterna parpadea (por tiempo, no por cuadro)
@@ -192,7 +208,7 @@ class TDGame {
       if (intruder) {
         this.channelGen = null; this.channelT = 0; this.channelPoint = null; this.channelBlocked = true;
         this.static = Math.min(100, this.static + 22);
-        intruder.onLit();
+        intruder.enrage();
         Sound.stinger();
         this._notify("¡El Esbelto lo impide!");
       } else {
@@ -213,6 +229,15 @@ class TDGame {
       if (cg && this.channelBlocked) this._notify("El Esbelto vigila el foco...");
       else if (cg && this.genCharges <= 0) this._notify("Sin cargas de generador");
       else if (cg) this._notify("Manten E para encender el foco");
+    }
+
+    // Cabanas: revisarlas desde la puerta
+    for (const pr of TDLevel.props) {
+      if (pr.kind !== "cabana" || pr.checked || !pr.door) continue;
+      if (Math.hypot(p.x - pr.door.x, p.y - pr.door.y) < 50) {
+        this._notify("E: revisar la cabana");
+        if (Input.wasPressed("interact")) { pr.checked = true; Sound.footstep(false); Story.onProp(this, pr); }
+      }
     }
 
     const e = TDLevel.exit;
@@ -293,6 +318,7 @@ class TDGame {
         }
       }
     }
+    this._drawTrail(ctx);
     for (const g of TDLevel.generators) {
       if (!g.active) continue;
       const pulse = 0.14 + Math.sin(Date.now() / 200) * 0.03;
@@ -302,6 +328,52 @@ class TDGame {
       ctx.fillStyle = grad;
       ctx.beginPath(); ctx.arc(g.x, g.y, g.radius, 0, Math.PI * 2); ctx.fill();
     }
+  }
+
+  // Sendero de tierra y huellas (Noche 1)
+  _drawTrail(ctx) {
+    const tr = TDLevel.trail;
+    if (!tr) return;
+    const x0 = this.camX - 60, x1 = this.camX + this.W + 60, y0 = this.camY - 60, y1 = this.camY + this.H + 60;
+    const vis = (p) => p.x > x0 && p.x < x1 && p.y > y0 && p.y < y1;
+    // Un solo trazo grueso para que el sendero se vea continuo
+    ctx.save();
+    ctx.strokeStyle = "rgba(70,52,34,0.36)"; ctx.lineWidth = 44; ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.beginPath(); tr.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); ctx.stroke();
+    ctx.strokeStyle = "rgba(90,68,44,0.25)"; ctx.lineWidth = 26; ctx.stroke();
+    ctx.restore();
+    for (const f of TDLevel.prints) {
+      if (!vis(f)) continue;
+      ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.ang);
+      if (f.big) {
+        // La huella enorme, descalza
+        ctx.fillStyle = "rgba(14,10,8,0.7)";
+        ctx.beginPath(); ctx.ellipse(0, 0, 15, 5, 0, 0, Math.PI * 2); ctx.fill();
+        for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.arc(15, k * 2.5, 1.6, 0, Math.PI * 2); ctx.fill(); }
+      } else {
+        ctx.fillStyle = "rgba(20,14,10,0.55)";
+        ctx.beginPath(); ctx.ellipse(0, 0, 5, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // Cabana del campamento (3x2 casillas)
+  _drawCabana(ctx, pr) {
+    const T = TDLevel.TILE, { c, r } = pr.tile;
+    const x = (c - 1) * T, y = (r - 1) * T, w = 3 * T, h = 2 * T, lift = 34;
+    ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fillRect(x + 4, y + h - 6, w, 10);
+    ctx.fillStyle = "#2a1f16"; ctx.fillRect(x, y - lift + 20, w, h + lift - 20);
+    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+    for (let yy = y - lift + 30; yy < y + h; yy += 12) { ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke(); }
+    ctx.fillStyle = "#1a130e";
+    ctx.beginPath(); ctx.moveTo(x - 10, y - lift + 24); ctx.lineTo(x + w / 2, y - lift - 22); ctx.lineTo(x + w + 10, y - lift + 24); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#1c2438"; ctx.fillRect(x + 14, y + 14, 26, 20); ctx.fillRect(x + w - 40, y + 14, 26, 20);
+    ctx.fillStyle = pr.checked ? "#050404" : "#4a3220";
+    ctx.fillRect(x + w / 2 - 15, y + h - 46, 30, 46);
+    ctx.fillStyle = "#c8b890"; ctx.font = "10px 'Trebuchet MS', sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(`CABANA ${TDLevel.props.filter((q) => q.kind === "cabana").indexOf(pr) + 1}`, x + w / 2, y - lift + 36);
+    ctx.textAlign = "left";
   }
 
   _drawFogata(ctx, pr) {
@@ -342,12 +414,14 @@ class TDGame {
             continue;
           }
           const rock = (r * 7 + c * 3) % 5 === 0;
+          if (TDLevel.propTiles && TDLevel.propTiles.has(r + "," + c)) continue;
           items.push({ y: r * T + T, fn: () => (rock ? this._drawRock(ctx, c, r) : this._drawTree(ctx, c, r)) });
         }
     for (const b of TDLevel.batteries) if (!b.taken) items.push({ y: b.y + 10, fn: () => (b.id === "linterna" ? this._drawFlashlightItem(ctx, b) : this._drawBattery(ctx, b)) });
     for (const n of TDLevel.notes) if (!n.collected) items.push({ y: n.y + 12, fn: () => this._drawNote(ctx, n) });
     for (const g of TDLevel.generators) items.push({ y: g.y + 18, fn: () => this._drawGenerator(ctx, g) });
     for (const pr of TDLevel.props) if (pr.kind === "fogata") items.push({ y: pr.y + 14, fn: () => this._drawFogata(ctx, pr) });
+    for (const pr of TDLevel.props) if (pr.kind === "cabana") items.push({ y: (pr.tile.r + 1) * TDLevel.TILE, fn: () => this._drawCabana(ctx, pr) });
     if (!map) items.push({ y: TDLevel.exit.y + 22, fn: () => this._drawExit(ctx) });
     items.push({ y: this.player.y + 15, fn: () => this.player.draw(ctx) });
     if (!this.dormant) for (const s of this.slenders) items.push({ y: s.y + 16, fn: () => s.draw(ctx) });
@@ -560,6 +634,9 @@ class TDGame {
 
     ctx.fillStyle = "#8a9a8a"; ctx.font = "13px 'Trebuchet MS', sans-serif";
     ctx.fillText(`${TDLevel.label || "NOCHE " + this.night}: ${TDLevel.name}`, 20, 90);
+    // Meta de esta noche
+    ctx.fillStyle = "#c9b27a"; ctx.font = "13px 'Trebuchet MS', sans-serif";
+    ctx.fillText("\u25B8 " + Story.goal(this), 20, 108);
 
     ctx.fillStyle = "#dfe6df"; ctx.font = "16px 'Trebuchet MS', sans-serif"; ctx.textAlign = "right";
     const got = TDLevel.notes.filter((n) => n.collected).length;

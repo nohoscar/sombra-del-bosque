@@ -151,6 +151,8 @@ const TDLevel = {
     this.slenderConfigs = [];
     this.bushes = new Set();
     this.props = [];
+    this.propTiles = new Set();
+    this.trail = null; this.prints = [];
   },
 
   load(i) {
@@ -233,7 +235,7 @@ const TDLevel = {
       const c = Math.max(3, Math.min(C - 4, Math.round(C * pr.at[0])));
       const r = Math.max(3, Math.min(R - 4, Math.round(R * pr.at[1])));
       this._clearRadius(c, r, 2);
-      return { ...this.center(c, r), tile: { c, r }, kind: pr.kind, lit: true };
+      return { ...this.center(c, r), tile: { c, r }, kind: pr.kind, lit: pr.kind === "fogata" };
     });
     this.props.forEach((pr) => this._carve(3, 3, pr.tile.c, pr.tile.r));
 
@@ -254,6 +256,54 @@ const TDLevel = {
       if (Math.abs(c - 3) < 3 && Math.abs(r - 3) < 3) continue;
       this.bushes.add(r + "," + c);
       placed++;
+    }
+
+    // Cabanas: se levantan al final para que ningun camino las atraviese.
+    // Ocupan 3x2 casillas; se revisan desde la puerta (abajo al centro).
+    this.propTiles = new Set();
+    for (const pr of this.props) {
+      if (pr.kind !== "cabana") continue;
+      const { c, r } = pr.tile;
+      this._clearRadius(c, r, 2);
+      for (let dr = -1; dr <= 0; dr++)
+        for (let dc = -1; dc <= 1; dc++) {
+          this.grid[r + dr][c + dc] = 1;
+          this.propTiles.add((r + dr) + "," + (c + dc));
+          this.bushes.delete((r + dr) + "," + (c + dc));
+        }
+      pr.door = this.center(c, r + 1);
+      pr.checked = false;
+      // Si una bateria quedo dentro, sale a la puerta
+      for (const b of this.batteries) {
+        const bt = this.tileAtPx(b.x, b.y);
+        if (this.propTiles.has(bt.r + "," + bt.c)) { b.x = pr.door.x + 30; b.y = pr.door.y; }
+      }
+    }
+
+    // Rastro de huellas: de la salida del jugador, por cada nota en orden, hasta la salida
+    this.trail = null; this.prints = [];
+    if (d.trail) {
+      const stops = [{ c: 3, r: 3 }, ...this.notes.map((n) => n.tile), this.exit.tile];
+      const pts = [this.center(3, 3)];
+      for (let k = 0; k < stops.length - 1; k++) {
+        const seg = this.findPath(stops[k].c, stops[k].r, stops[k + 1].c, stops[k + 1].r);
+        if (seg) pts.push(...seg);
+      }
+      this.trail = pts;
+      // Huellas cada 30 px: las de Tommy (chicas, alternadas) y cada tanto una enorme
+      let carry = 0, side = 1, n = 0;
+      for (let k = 1; k < pts.length; k++) {
+        const a = pts[k - 1], b = pts[k], len = Math.hypot(b.x - a.x, b.y - a.y);
+        const ang = Math.atan2(b.y - a.y, b.x - a.x);
+        let s = 30 - carry;
+        for (; s <= len; s += 30) {
+          const x = a.x + Math.cos(ang) * s, y = a.y + Math.sin(ang) * s;
+          side = -side; n++;
+          this.prints.push({ x: x - Math.sin(ang) * 6 * side, y: y + Math.cos(ang) * 6 * side, ang, big: false });
+          if (n % 5 === 0) this.prints.push({ x: x + Math.sin(ang) * 16, y: y - Math.cos(ang) * 16, ang, big: true });
+        }
+        carry = len - (s - 30);
+      }
     }
   },
 
@@ -282,7 +332,7 @@ const TDLevel = {
   totalChapters: 6,
   _defs: [
     {
-      label: "PROLOGO", name: "La Casa", button: "ENTRAR",
+      label: "PROLOGO", name: "La Casa", button: "ENTRAR", goal: "Busca a Tommy en la casa",
       intro: "Martes, 11:48 p.m.\nPapa tiene turno doble en el aserradero.\nTommy deberia estar dormido.",
       outro: "La puerta trasera estaba abierta.\nEn el lodo, unas huellas pequenas se pierden entre los pinos.\nJunto a ellas, otras. Mucho mas largas.",
       hud: { story: true },
@@ -320,7 +370,7 @@ const TDLevel = {
       ],
     },
     {
-      label: "NOCHE 1", name: "El Sendero",
+      label: "NOCHE 1", name: "El Sendero", goal: "Sigue las huellas de Tommy", trail: true,
       intro: "Las huellas de Tommy siguen el viejo sendero del parque.\nJunto a ellas, otras: descalzas, enormes, a tres metros una de otra.",
       outro: "Al final del sendero, entre la niebla, una luz vieja parpadea.\nAlguien, hace mucho, tambien llego hasta aqui.",
       ambient: { tint: "rgba(40,60,90,0.05)", dark: 0.60 },
@@ -341,7 +391,9 @@ const TDLevel = {
       outro: "La fogata se apago sola.\nEn el humo, por un segundo, vi a doce ninos.\nUno traia la gorra de Tommy.",
       outroVoice: "n2_final",
       ambient: { tint: "rgba(50,50,80,0.07)", dark: 0.62 },
-      props: [{ kind: "fogata", at: [0.5, 0.5] }],
+      goal: "Revisa las 4 cabanas y junta las notas",
+      props: [{ kind: "fogata", at: [0.5, 0.5] }, { kind: "cabana", at: [0.25, 0.22] }, { kind: "cabana", at: [0.75, 0.18] },
+              { kind: "cabana", at: [0.1, 0.75] }, { kind: "cabana", at: [0.55, 0.82] }],
       slenders: [{ speed: 108, viewDist: 320, persistence: 0.72 }],
       notes: [
         { kind: "aviso", title: "CAMPAMENTO WILLOW - CERRADO 1989", text: "'Por la seguridad de nuestros campistas,\nel campamento no reabrira.'\n\n[a mano]: 'mentira. lo cerraron por los que faltan.'" },

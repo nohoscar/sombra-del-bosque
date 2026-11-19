@@ -26,6 +26,14 @@ const Story = {
 
   onNote(g, note) { const s = this.chapters[this.ch]; if (s && s.onNote) s.onNote(g, this, note); },
   onItem(g, item) { const s = this.chapters[this.ch]; if (s && s.onItem) s.onItem(g, this, item); },
+  onProp(g, prop) { const s = this.chapters[this.ch]; if (s && s.onProp) s.onProp(g, this, prop); },
+
+  // Texto de la meta que se ve arriba a la izquierda
+  goal(g) {
+    const s = this.chapters[this.ch];
+    if (s && s.goal) return s.goal(g, this);
+    return (TDLevel.def && TDLevel.def.goal) || "Junta las notas y escapa";
+  },
 
   // Devuelve un texto si la salida sigue bloqueada, o null si ya se puede salir
   exitBlock(g) {
@@ -171,10 +179,38 @@ const Story = {
         }
       },
       onNote(g, S, note) {
-        if (note.id === "bitacora") S.after(1.0, () => g.say("Once camas. En la lista hay doce nombres.", 4, "n2_literas"));
         if (note.id === "dibujo") Sound.theme(true);
         const got = TDLevel.notes.filter((n) => n.collected).length;
         if (got >= 3) S.flags.llamar = true;
+      },
+      onProp(g, S, pr) {
+        const cabs = TDLevel.props.filter((q) => q.kind === "cabana");
+        const n = cabs.filter((q) => q.checked).length;
+        if (n < 4) { g.say(["Tres literas.", "Seis.", "Nueve."][n - 1], 2.5, "n2_cab" + n); return; }
+        // La ultima cabana: la cuenta no cuadra... y algo esta adentro
+        g.say("Once. Solo once camas... y en la lista hay doce nombres.", 5, "n2_literas");
+        S.after(4.5, () => {
+          Sound.silence(0.9);
+          S.after(0.9, () => {
+            g.appear(pr.x, pr.y - TDLevel.TILE * 0.2, 2.0);
+            g.flickerLight(2.0); g.static = Math.min(100, g.static + 34); Sound.hit();
+          });
+        });
+      },
+      goal(g) {
+        const cabs = TDLevel.props.filter((q) => q.kind === "cabana");
+        const left = cabs.filter((q) => !q.checked).length;
+        const notes = TDLevel.notes.filter((n) => !n.collected).length;
+        if (left) return `Revisa las cabanas (${cabs.length - left}/${cabs.length}) y junta las notas`;
+        if (notes) return `Junta las notas (faltan ${notes})`;
+        return "Escapa del campamento";
+      },
+      exitBlock(g) {
+        const left = TDLevel.props.filter((q) => q.kind === "cabana" && !q.checked).length;
+        const notes = TDLevel.notes.filter((n) => !n.collected).length;
+        if (left) return `Faltan ${left} cabana(s) por revisar`;
+        if (notes) return `Faltan ${notes} nota(s)`;
+        return null;
       },
     },
   },

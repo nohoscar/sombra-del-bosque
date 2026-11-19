@@ -24,7 +24,10 @@ class TDSlender {
     this.caught = false;
     this.flicker = 0;
     this.stuck = 0;
-    this.lunge = 0;   // embestida (más veloz) al ser iluminado
+    this.lunge = 0;   // embestida (más veloz) cuando lo provocas
+    this.stun = 0;    // la linterna lo frena un instante
+    this.stunCd = 0;  // espera antes de poder frenarlo otra vez
+    this.lastX = null; this.lastY = null;  // donde te vio por ultima vez
 
     // Puntos de patrulla: tiles de piso repartidos
     this.waypoints = this._genWaypoints(6);
@@ -111,17 +114,26 @@ class TDSlender {
     return this._moveToward(gx, gy, speed, dt); // fallback directo (cerca)
   }
 
-  // La linterna lo alcanza: se enfurece y carga hacia el jugador
-  onLit() {
+  // Te enfurece (por ejemplo, si te ve encender un foco): carga hacia ti
+  enrage() {
     this.state = "chase";
     this.detection = 100;
     this.lunge = Math.max(this.lunge, 1.1);
     this.pathT = 0;
   }
 
+  // La linterna lo alcanza: se congela un instante. Devuelve true si lo freno.
+  onLit() {
+    if (this.stunCd > 0 || this.stun > 0) return false;
+    this.stun = 1.3; this.stunCd = 4.5;
+    // Si no te perseguia, ahora sabe que estas ahi
+    if (this.state !== "chase") { this.detection = Math.max(this.detection, 70); this.state = "suspicious"; }
+    return true;
+  }
+
   // Atraído por el ruido de encender un foco: se acerca al punto
   lureTo(x, y, dt) {
-    if (this.state === "chase") return;
+    if (this.state === "chase" || this.stun > 0) return;
     this._moveToward(x, y, this.speed * 1.15, dt);
     this.detection = Math.min(100, this.detection + 45 * dt);
     if (this.detection > 45) this.state = "suspicious";
@@ -130,19 +142,24 @@ class TDSlender {
   update(dt, p) {
     this.flicker += dt;
     if (this.lunge > 0) this.lunge -= dt;
+    if (this.stunCd > 0) this.stunCd -= dt;
+    if (this.stun > 0) { this.stun -= dt; return; }   // congelado por la luz
     const dist = Math.hypot(p.x - this.x, p.y - this.y);
     const sees = this.canSee(p);
     const hears = dist < 240 * p.noise && !p.hidden && TDLevel.lineOfSight(this.x, this.y, p.x, p.y);
+    if (sees || (this.state === "chase" && !p.hidden)) { this.lastX = p.x; this.lastY = p.y; }
 
     if (this.state === "chase") {
       if (p.hidden) {
-        // Perdió el rastro: navega al último punto y afloja
-        this.detection -= (65 * this.hideLose / this.persistence) * dt;
-        this._navigate(p.x, p.y, this.speed * 1.3, dt, 0.35);
+        // Va a donde te vio por ultima vez y revisa. Si te escondiste ahi mismo, te encuentra.
+        this.detection -= (35 * this.hideLose / this.persistence) * dt;
+        const gx = this.lastX ?? p.x, gy = this.lastY ?? p.y;
+        this._navigate(gx, gy, this.speed * 1.2, dt, 0.35);
+        if (dist < 34 && this.detection > 40) this.caught = true;
         if (this.detection <= 25) { this.state = "patrol"; this.wp = this._nearestWaypoint(); this.pathT = 0; }
       } else {
         this.detection = 100;
-        // Persecución: más lento que correr (podés escapar), embiste si te iluminó
+        // Persecución: más lento que correr (podés escapar), embiste si lo provocaste
         const chaseSpeed = this.speed * (this.lunge > 0 ? 1.9 : 1.5);
         this._navigate(p.x, p.y, chaseSpeed, dt, 0.25);
         if (dist < 20) this.caught = true;
@@ -205,7 +222,8 @@ class TDSlender {
 
   // Cuerpo en perspectiva 3/4: figura alta y delgada, anclada por los pies
   draw(ctx) {
-    const x = Math.round(this.x), y = Math.round(this.y);
+    // Congelado por la luz: tiembla
+    const x = Math.round(this.x + (this.stun > 0 ? (Math.random() - 0.5) * 7 : 0)), y = Math.round(this.y);
     const chasing = this.state === "chase";
     const sway = Math.sin(this.flicker * 1.5) * 1.5;
 

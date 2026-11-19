@@ -217,4 +217,8 @@ window.addEventListener("load", () => {
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+
+  // Para probar: abrir con #prueba-1 empieza directo en esa noche (0 = prologo)
+  const m = /^#prueba-(\d)$/.exec(location.hash || "");
+  if (m) { hide(startScreen); game.beginNight(Math.min(+m[1], TDLevel.totalNights - 1)); }
 });
