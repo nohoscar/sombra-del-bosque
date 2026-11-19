@@ -6,7 +6,7 @@ import vm from "node:vm";
 import path from "node:path";
 
 const ROOT = path.resolve(process.cwd(), "public");
-const files = ["js/input.js", "js/difficulty.js", "js/audio.js", "js/cinematic.js", "js/td/level.js",
+const files = ["js/input.js", "js/difficulty.js", "js/audio.js", "js/cinematic.js", "js/menu.js", "js/td/level.js",
   "js/td/player.js", "js/td/slender.js", "js/td/story.js", "js/td/game.js"];
 
 const ctx2d = new Proxy({}, {
@@ -99,6 +99,20 @@ ok(game.state === "playing", `sigue jugando tras el susto (estado: ${game.state}
 
 console.log("\nNOCHES 3-5 (carga y 10 s)");
 for (let i = 3; i < TDLevel.totalNights; i++) { game.beginNight(i); step(600); ok(true, `${TDLevel.label} corre`); }
+
+console.log("\nMENU");
+{
+  const MS = vm.runInContext("MenuScene", sandbox);
+  const cv = mkCanvas(); MS.init(cv);
+  for (const prog of [0, 1, 3]) { MS.progress = prog; for (let i = 0; i < 120; i++) { MS.update(1 / 60); MS.draw(cv.getContext()); } }
+  ok(true, "el menu se dibuja con avance 0, 1 y 3");
+  MS.slender = null; MS.nextSlender = 0; MS.update(1 / 60);
+  ok(!!MS.slender, "el Esbelto aparece entre los pinos");
+  for (let i = 0; i < 90; i++) MS.update(1 / 60);
+  const s = MS.slender, par = (MS.mx / 1024 - 0.5) * 24;
+  MS.mx = s.x - par; MS.my = s.y - s.h * 0.6; MS.moved = 5; MS.update(1 / 60);
+  ok(!MS.slender && MS.glitch > 0, "si lo alumbras, desaparece con chispazo");
+}
 
 console.log("\nCINEMATICAS");
 const ctx = mkCanvas().getContext();

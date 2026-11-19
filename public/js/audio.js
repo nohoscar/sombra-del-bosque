@@ -185,6 +185,34 @@ const Sound = {
     return (this.__crunch = c);
   },
 
+  // ================= MENU =================
+  // Musica del menu: viento, grillos y la caja de musica de Tommy cada tanto
+  menuStart() {
+    if (!this.started || this._menuTimer) return;
+    this.startAmbience();
+    this.setMusic("home");
+    this.theme();
+    this._menuTimer = setInterval(() => this.theme(Math.random() < 0.3), 15000);
+  },
+  menuStop() {
+    if (this._menuTimer) { clearInterval(this._menuTimer); this._menuTimer = null; }
+    this.stopAmbience();
+  },
+  // Chispazo corto de estatica
+  glitchBurst() {
+    if (!this.started) return;
+    const t = this.ctx.currentTime;
+    const s = this.ctx.createBufferSource(); s.buffer = this._noiseBuf;
+    const bp = this.ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 2400; bp.Q.value = 0.6;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    s.connect(bp); bp.connect(g); g.connect(this.master); s.start(t, Math.random()); s.stop(t + 0.4);
+    const o = this.ctx.createOscillator(), og = this.ctx.createGain();
+    o.type = "sine"; o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.5);
+    og.gain.setValueAtTime(0.3, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    o.connect(og); og.connect(this.master); o.start(t); o.stop(t + 0.65);
+  },
+
   // ================= MUSICA QUE CAMBIA EN VIVO =================
   // Capas: zumbido grave (siempre), cuerdas tensas (sospecha) y percusion (persecucion).
   _initMusic() {

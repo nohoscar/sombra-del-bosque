@@ -30,11 +30,22 @@ window.addEventListener("load", () => {
   // Audio por gesto
   const initAudioOnce = () => {
     Sound.init(); Sound.resume();
+    if (!startScreen.classList.contains("hidden")) Sound.menuStart();
     window.removeEventListener("pointerdown", initAudioOnce);
     window.removeEventListener("keydown", initAudioOnce);
   };
   window.addEventListener("pointerdown", initAudioOnce);
   window.addEventListener("keydown", initAudioOnce);
+  MenuScene.init(canvas);
+
+  // Paneles del menu (dificultad y controles)
+  const menuMain = document.querySelector(".menu-left");
+  const openPanel = (id) => { menuMain.classList.add("hidden"); show($(id)); };
+  const closePanels = () => { hide($("panel-diff")); hide($("panel-controls")); menuMain.classList.remove("hidden"); };
+  $("diff-open").addEventListener("click", () => openPanel("panel-diff"));
+  $("controls-open").addEventListener("click", () => openPanel("panel-controls"));
+  document.querySelectorAll(".panel-back").forEach((b) => b.addEventListener("click", closePanels));
+  const backToMenu = () => { closePanels(); show(startScreen); refreshContinue(); Sound.menuStart(); };
 
   // Lectura de notas letra por letra
   let typeTimer = null, noteTyping = false, currentText = "";
@@ -54,6 +65,7 @@ window.addEventListener("load", () => {
     Difficulty.set(name);
     diffBtns.forEach((b) => b.classList.toggle("active", b.dataset.diff === name));
     diffDesc.textContent = Difficulty.get().desc;
+    $("diff-current").textContent = Difficulty.get().label;
   };
   diffBtns.forEach((b) => b.addEventListener("click", () => setDiff(b.dataset.diff)));
   setDiff("normal");
@@ -68,6 +80,7 @@ window.addEventListener("load", () => {
   const continueBtn = $("continue-btn");
   const refreshContinue = () => {
     const u = loadProgress();
+    MenuScene.progress = u;
     if (u > 0) { continueBtn.textContent = `CONTINUAR (${TDLevel.getInfo(u).label})`; show(continueBtn); }
     else hide(continueBtn);
   };
@@ -122,11 +135,11 @@ window.addEventListener("load", () => {
   });
 
   // Botones
-  $("start-btn").addEventListener("click", () => { hide(startScreen); Cinematic.play(Cinematic.OPENING, () => showNightIntro(0)); });
-  continueBtn.addEventListener("click", () => { hide(startScreen); showNightIntro(loadProgress()); });
+  $("start-btn").addEventListener("click", () => { hide(startScreen); Sound.menuStop(); Cinematic.play(Cinematic.OPENING, () => showNightIntro(0)); });
+  continueBtn.addEventListener("click", () => { hide(startScreen); Sound.menuStop(); showNightIntro(loadProgress()); });
   $("retry-btn").addEventListener("click", () => { hide(gameoverScreen); game.retry(); });
   nightBtn.addEventListener("click", () => Sound.stopVoice());
-  $("win-btn").addEventListener("click", () => { hide(winScreen); refreshContinue(); show(startScreen); });
+  $("win-btn").addEventListener("click", () => { hide(winScreen); game.state = "menu"; backToMenu(); });
   $("note-btn").addEventListener("click", () => {
     if (noteTyping) { clearInterval(typeTimer); noteText.textContent = currentText; noteTyping = false; return; }
     hide(noteScreen); Sound.stopReading(); game.resumeFromNote();
@@ -140,7 +153,7 @@ window.addEventListener("load", () => {
   $("restart-night-btn").addEventListener("click", () => { hide(pauseScreen); game.retry(); });
   $("mute-btn").addEventListener("click", () => Sound.toggleMute());
   $("tomenu-btn").addEventListener("click", () => {
-    hide(pauseScreen); Sound.stopAmbience(); game.state = "menu"; show(startScreen); refreshContinue();
+    hide(pauseScreen); Sound.stopAmbience(); game.state = "menu"; backToMenu();
   });
 
   // Si cambias de pestana o llega una llamada, el juego se pausa solo
@@ -196,7 +209,10 @@ window.addEventListener("load", () => {
     if (dt > 0.05) dt = 0.05;
     Input.update();
     if (Cinematic.active) { Cinematic.update(dt); Cinematic.draw(ctx, canvas.width, canvas.height); }
-    else { game.update(dt); game.draw(); }
+    else {
+      game.update(dt); game.draw();
+      if (game.state === "menu") { MenuScene.update(dt); MenuScene.draw(ctx); }
+    }
     pauseBtn.classList.toggle("on", game.state === "playing" && !game.paused && !Cinematic.active);
     requestAnimationFrame(loop);
   }
