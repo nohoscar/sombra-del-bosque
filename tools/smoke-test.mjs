@@ -82,8 +82,23 @@ for (let i = 0; i < 60 * 20; i++) { Input.keys.right = i % 200 < 100; Input.keys
 Input.keys = {};
 ok(true, `20 s jugando sin errores (estado: ${game.state}, estatica max ${Math.round(maxT)})`);
 
-console.log("\nNOCHES 2-5 (carga y 10 s)");
-for (let i = 2; i < TDLevel.totalNights; i++) { game.beginNight(i); step(600); ok(true, `${TDLevel.label} corre`); }
+console.log("\nNOCHE 2");
+game.beginNight(2);
+const fog = TDLevel.props[0];
+ok(fog && !TDLevel.circleHitsWall(fog.x + 60, fog.y, 18), "la fogata tiene espacio alrededor");
+{ const s0 = TDLevel.tileAtPx(game.player.x, game.player.y), ft = TDLevel.tileAtPx(fog.x + 60, fog.y);
+  ok(TDLevel.findPath(s0.c, s0.r, ft.c, ft.r) !== null, "hay camino a la fogata"); }
+step(120);
+game.slenders.forEach((s) => { s.x = 40; s.y = 40; s.speed = 0; });  // lejos, para probar el guion
+tp(fog.x + 120, fog.y); step(3); step(80);
+ok(Story.flags.cinta, "la cinta de la fogata suena al acercarse");
+for (let k = 0; k < 3; k++) { const n = TDLevel.notes[k]; tp(n.x, n.y); step(2); press("interact"); closeNote(); step(5); }
+step(60 * 7);
+ok(Story.flags.llamado, "la voz falsa de Tommy te llama");
+ok(game.state === "playing", `sigue jugando tras el susto (estado: ${game.state})`);
+
+console.log("\nNOCHES 3-5 (carga y 10 s)");
+for (let i = 3; i < TDLevel.totalNights; i++) { game.beginNight(i); step(600); ok(true, `${TDLevel.label} corre`); }
 
 console.log("\nCINEMATICAS");
 const ctx = mkCanvas().getContext();

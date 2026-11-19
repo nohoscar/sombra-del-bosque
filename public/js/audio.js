@@ -119,23 +119,28 @@ const Sound = {
   VOICES: [
     "op_1", "op_2", "op_3", "pr_tommy", "pr_contestadora", "pr_dibujo", "pr_ventana", "pr_caja",
     "pr_linterna", "pr_salir", "in_1", "n1_inicio", "n1_arbusto", "n1_ahi", "n1_huellas", "n1_miller",
-    "n1_baliza", "n1_tommy",
+    "n1_baliza", "n1_tommy", "n2_inicio", "n2_bitacora", "n2_literas", "n2_cinta", "n2_tommy", "n2_nolo",
+    "n2_dibujo", "n2_final",
   ],
   voices: {},
   _voiceSrc: null,
+  // Voces que suenan por un aparato viejo (contestadora, dictafono, cinta)
+  _FILTERED: ["pr_contestadora", "n1_miller", "n2_cinta"],
+  // Ajuste de volumen por linea (algunas grabaciones salen mas fuertes)
+  _GAIN: { n1_tommy: 0.42, n2_tommy: 0.55 },
 
   hasVoice(key) { return !!(this.voices && this.voices[key]); },
 
-  // Reproduce una voz; devuelve su duracion (0 si no existe)
-  playVoice(key) {
+  // Reproduce una voz; devuelve su duracion (0 si no existe).
+  // panTo (-1 izquierda .. 1 derecha) coloca la voz en un lado.
+  playVoice(key, panTo) {
     if (!this.started || !this.voices[key]) return 0;
     this.stopVoice();
     const ctx = this.ctx, t = ctx.currentTime;
     const src = ctx.createBufferSource();
     src.buffer = this.voices[key];
     let node = src;
-    // Contestadora y dictafono: suenan por un altavoz viejo
-    if (key === "pr_contestadora" || key === "n1_miller") {
+    if (this._FILTERED.includes(key)) {
       const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 420;
       const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 3000;
       const sh = ctx.createWaveShaper(); sh.curve = this._crunch(); 
@@ -147,13 +152,14 @@ const Sound = {
       hiss.connect(hb); hb.connect(hg); hg.connect(this.master);
       hiss.start(t); hiss.stop(t + src.buffer.duration + 0.3);
     }
-    const g = ctx.createGain(); g.gain.value = 1.0;
+    const g = ctx.createGain(); g.gain.value = this._GAIN[key] ?? 1.0;
     const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
     // La voz de Tommy no viene de un lugar fijo: se mueve de un oido al otro
     if (pan && key === "n1_tommy") {
       pan.pan.setValueAtTime(-0.9, t);
       pan.pan.linearRampToValueAtTime(0.9, t + src.buffer.duration);
-      g.gain.value = 0.42; // esta grabacion salio mas fuerte
+    } else if (pan && typeof panTo === "number") {
+      pan.pan.value = Math.max(-1, Math.min(1, panTo));
     }
     node.connect(g);
     if (pan) { g.connect(pan); pan.connect(this.master); } else g.connect(this.master);

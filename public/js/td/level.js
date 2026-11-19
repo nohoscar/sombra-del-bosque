@@ -17,6 +17,7 @@ const TDLevel = {
   start: { x: 0, y: 0 },
   slenderConfigs: [],
   ambient: null,
+  props: [],
 
   get worldW() { return this.cols * this.TILE; },
   get worldH() { return this.rows * this.TILE; },
@@ -149,6 +150,7 @@ const TDLevel = {
     this.batteries = (d.items || []).map((b) => ({ ...at(b.at), taken: false, label: b.label, amount: b.amount ?? 45, id: b.id }));
     this.slenderConfigs = [];
     this.bushes = new Set();
+    this.props = [];
   },
 
   load(i) {
@@ -225,6 +227,15 @@ const TDLevel = {
 
     // Baterías (según dificultad)
     this.batteries = this._genBatteries(i);
+
+    // Decorado con historia (fogata, etc.): se limpia alrededor y se garantiza el camino
+    this.props = (d.props || []).map((pr) => {
+      const c = Math.max(3, Math.min(C - 4, Math.round(C * pr.at[0])));
+      const r = Math.max(3, Math.min(R - 4, Math.round(R * pr.at[1])));
+      this._clearRadius(c, r, 2);
+      return { ...this.center(c, r), tile: { c, r }, kind: pr.kind, lit: true };
+    });
+    this.props.forEach((pr) => this._carve(3, 3, pr.tile.c, pr.tile.r));
 
     // Garantiza acceso
     const st = { c: 3, r: 3 };
@@ -326,15 +337,18 @@ const TDLevel = {
       ],
     },
     {
-      label: "NOCHE 2", intro: "El sendero muere en un campamento de verano cerrado hace decadas.\nAlguien dejo encendida la fogata.", name: "El Campamento", cols: 52, rows: 32, density: 0.05, gens: 3,
+      label: "NOCHE 2", intro: "El sendero muere en un campamento de verano cerrado hace anos.\nAlguien dejo encendida la fogata.", name: "El Campamento", cols: 52, rows: 32, density: 0.05, gens: 3,
+      outro: "La fogata se apago sola.\nEn el humo, por un segundo, vi a doce ninos.\nUno traia la gorra de Tommy.",
+      outroVoice: "n2_final",
       ambient: { tint: "rgba(50,50,80,0.07)", dark: 0.62 },
+      props: [{ kind: "fogata", at: [0.5, 0.5] }],
       slenders: [{ speed: 108, viewDist: 320, persistence: 0.72 }],
       notes: [
-        { kind: "aviso", title: "CAMPAMENTO WILLOW - CERRADO 2004", text: "'Por la seguridad de nuestros campistas,\nel campamento no reabrira.'\n\n[a mano]: 'mentira. lo cerraron por los que faltan.'" },
-        { kind: "diario", title: "BITACORA - Consejera R., 1998", text: "Noche 6. Los ninos dibujan al 'hombre flaco' de los pinos.\nLes dije que no existe.\nHoy conte las literas. Falta una.\nNadie recuerda a quien pertenecia." },
+        { kind: "aviso", title: "CAMPAMENTO WILLOW - CERRADO 1989", text: "'Por la seguridad de nuestros campistas,\nel campamento no reabrira.'\n\n[a mano]: 'mentira. lo cerraron por los que faltan.'" },
+        { id: "bitacora", kind: "diario", voice: "n2_bitacora", title: "BITACORA - Consejera R., 1987", text: "Noche 6. Los ninos dibujan al 'hombre flaco' de los pinos.\nLes dije que no existe.\nHoy conte las literas. Falta una.\nY nadie recuerda de quien era." },
         { kind: "grabacion", title: "CINTA DE FOGATA (danada)", text: "'...canten mas fuerte, ninos... ///\n...si lo ven, no lo miren a la ///\n[risas de ninos] ///\n[silencio muy largo]" },
         { kind: "policial", title: "ANEXO FORENSE - 1985", text: "Tronco con 34 nombres tallados.\nCaligrafias infantiles distintas.\nUltima talla, reciente, sin herramienta: 'TOMMY'." },
-        { kind: "dibujo", title: "DIBUJO INFANTIL (sin firma)", text: "Ninos en circulo. En el centro, una figura sin cara.\nEn las esquinas: 1971 . 1985 . 1998 . 2004.\nLa figura es identica en todas.\nAbajo: 'el nos cuida ahora'." },
+        { id: "dibujo", kind: "dibujo", voice: "n2_dibujo", title: "DIBUJO INFANTIL (sin firma)", text: "Ninos en circulo. En el centro, una figura sin cara.\nEn las esquinas: 1953 . 1971 . 1985 . 1998.\nLa figura es identica en todas.\nAbajo: 'el nos cuida ahora'." },
       ],
     },
     {

@@ -15,6 +15,7 @@ ALEX = "TX3LPaxmHKxFdv7VOQHJ"    # Liam: joven
 TOMMY = "ihKwLOjVUMG4lgUI6meZ"   # Leo: nino latino
 PAPA = "iP95p4xoKVk53GoZ742B"    # Chris: adulto
 MILLER = "pqHfZKP75CvOlQylNhV4"  # Bill: viejo
+CONSEJERA = "XrExE9yKIg1WjnnlVkGX"  # Matilda: adulta
 
 NORMAL = {"stability": 0.45, "similarity_boost": 0.75, "style": 0.35, "use_speaker_boost": True}
 TENSO = {"stability": 0.3, "similarity_boost": 0.75, "style": 0.55, "use_speaker_boost": True}
@@ -38,6 +39,14 @@ LINEAS = {
     "n1_miller": (MILLER, "Día catorce de búsqueda. Nunca hay cuerpos. Nunca. Los perros no ladran... se sientan... y miran hacia arriba.", NORMAL),
     "n1_baliza": (ALEX, "La baliza del sendero está apagada. Si la enciendo, veré el camino. Pero él también me verá a mí. Aguanta, Tommy.", NORMAL),
     "n1_tommy": (TOMMY, "Alex... no vengas. Él dice que tú también eres de la familia.", TENSO),
+    "n2_inicio": (ALEX, "El campamento Willow. Cerrado hace años. Y la fogata... sigue encendida.", TENSO),
+    "n2_bitacora": (CONSEJERA, "Noche seis. Los niños dibujan al hombre flaco de los pinos. Les dije que no existe. Hoy conté las literas. Falta una. Y nadie recuerda de quién era.", NORMAL),
+    "n2_literas": (ALEX, "Once camas. En la lista hay doce nombres.", NORMAL),
+    "n2_cinta": (CONSEJERA, "Canten más fuerte, niños... más fuerte. Si lo ven... no lo miren a la cara.", TENSO),
+    "n2_tommy": (TOMMY, "Alex... por aquí. Ven.", TENSO),
+    "n2_nolo": (ALEX, "Esa no es la voz de Tommy.", TENSO),
+    "n2_dibujo": (ALEX, "Niños en círculo. En medio, la figura sin cara. Los años: cincuenta y tres, setenta y uno, ochenta y cinco... noventa y ocho. Abajo dice: él nos cuida ahora.", NORMAL),
+    "n2_final": (ALEX, "La fogata se apagó sola. En el humo, por un segundo, vi a doce niños. Uno traía la gorra de Tommy.", NORMAL),
 }
 
 

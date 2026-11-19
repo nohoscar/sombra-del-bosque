@@ -136,5 +136,46 @@ const Story = {
         if (got >= 2) S.flags.avistar = true;
       },
     },
+
+    // ---------------- NOCHE 2: el campamento ----------------
+    2: {
+      start(g, S) {
+        S.after(1.0, () => g.say("El campamento Willow. Cerrado hace anos. Y la fogata... sigue encendida.", 5, "n2_inicio"));
+      },
+      update(g, S) {
+        const p = g.player, f = TDLevel.props[0];
+        // La cinta de la fogata suena sola cuando te acercas
+        if (f && !S.flags.cinta && Math.hypot(p.x - f.x, p.y - f.y) < 230) {
+          S.flags.cinta = true;
+          Sound.silence(0.8);
+          S.after(0.8, () => g.say("'Canten mas fuerte, ninos... Si lo ven... no lo miren a la cara.'", 6, "n2_cinta"));
+        }
+        // Al juntar 3 pistas, alguien te llama con la voz de Tommy
+        if (S.flags.llamar && !S.flags.llamado && g.state === "playing") {
+          S.flags.llamado = true;
+          Sound.silence(1.2);
+          S.after(1.2, () => {
+            // A un lado del jugador, donde haya piso a la vista
+            const a = Math.atan2(p.fy, p.fx) + (Math.random() < 0.5 ? 1.5 : -1.5);
+            let pt = null;
+            for (let d = 300; d > 100 && !pt; d -= 25) {
+              const x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
+              if (!TDLevel.circleHitsWall(x, y, 14) && TDLevel.lineOfSight(p.x, p.y, x, y)) pt = { x, y };
+            }
+            pt = pt || S._pointAhead(g, 260) || { x: p.x + 220, y: p.y };
+            const side = Math.sign((pt.x - p.x) || 1);
+            g.say("'Alex... por aqui. Ven.'", 3.5, "n2_tommy", side * 0.9);
+            S.after(1.6, () => { g.appear(pt.x, pt.y, 2.2); g.flickerLight(2.2); g.static = Math.min(100, g.static + 30); Sound.hit(); });
+            S.after(4.6, () => g.say("Esa no es la voz de Tommy.", 3, "n2_nolo"));
+          });
+        }
+      },
+      onNote(g, S, note) {
+        if (note.id === "bitacora") S.after(1.0, () => g.say("Once camas. En la lista hay doce nombres.", 4, "n2_literas"));
+        if (note.id === "dibujo") Sound.theme(true);
+        const got = TDLevel.notes.filter((n) => n.collected).length;
+        if (got >= 3) S.flags.llamar = true;
+      },
+    },
   },
 };

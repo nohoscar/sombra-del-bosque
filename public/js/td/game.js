@@ -48,9 +48,9 @@ class TDGame {
   retry() { this.beginNight(this.night); }
 
   // ---- Herramientas para el guion (story.js) ----
-  say(text, secs, voice) {
+  say(text, secs, voice, pan) {
     let dur = 0;
-    if (voice) dur = Sound.playVoice(voice) || 0;
+    if (voice) dur = Sound.playVoice(voice, pan) || 0;
     this.subtitle = { text, t: Math.max(secs || 3, dur + 0.6) };
   }
   hint(text, secs) { this.hintMsg = { text, t: secs || 4 }; }
@@ -304,6 +304,31 @@ class TDGame {
     }
   }
 
+  _drawFogata(ctx, pr) {
+    const x = pr.x, y = pr.y, t = Date.now() / 1000;
+    // Piedras alrededor y troncos
+    ctx.fillStyle = "#3a3540";
+    for (let i = 0; i < 9; i++) {
+      const a = i / 9 * Math.PI * 2;
+      ctx.beginPath(); ctx.ellipse(x + Math.cos(a) * 26, y + Math.sin(a) * 12, 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = "#3b2618"; ctx.fillRect(x - 16, y - 3, 32, 6);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(0.6); ctx.fillRect(-15, -3, 30, 6); ctx.restore();
+    if (!pr.lit) {
+      ctx.fillStyle = "rgba(160,160,170,0.25)";
+      ctx.beginPath(); ctx.ellipse(x + Math.sin(t) * 4, y - 22 - (t * 10 % 20), 7, 10, 0, 0, Math.PI * 2); ctx.fill();
+      return;
+    }
+    // Llamas que bailan
+    for (let k = 0; k < 3; k++) {
+      const h = 22 + Math.sin(t * 9 + k * 2) * 6 - k * 4, w = 9 - k * 2;
+      ctx.fillStyle = ["#d4521c", "#f0912c", "#ffd36a"][k];
+      ctx.beginPath();
+      ctx.moveTo(x - w, y); ctx.quadraticCurveTo(x - w * 0.6 + Math.sin(t * 7 + k) * 3, y - h * 0.6, x, y - h);
+      ctx.quadraticCurveTo(x + w * 0.6, y - h * 0.5, x + w, y); ctx.closePath(); ctx.fill();
+    }
+  }
+
   _drawSprites(ctx) {
     const T = TDLevel.TILE, v = this._visibleTiles(), items = [], map = TDLevel.tileMap;
     for (let r = v.r0; r <= v.r1; r++)
@@ -322,6 +347,7 @@ class TDGame {
     for (const b of TDLevel.batteries) if (!b.taken) items.push({ y: b.y + 10, fn: () => (b.id === "linterna" ? this._drawFlashlightItem(ctx, b) : this._drawBattery(ctx, b)) });
     for (const n of TDLevel.notes) if (!n.collected) items.push({ y: n.y + 12, fn: () => this._drawNote(ctx, n) });
     for (const g of TDLevel.generators) items.push({ y: g.y + 18, fn: () => this._drawGenerator(ctx, g) });
+    for (const pr of TDLevel.props) if (pr.kind === "fogata") items.push({ y: pr.y + 14, fn: () => this._drawFogata(ctx, pr) });
     if (!map) items.push({ y: TDLevel.exit.y + 22, fn: () => this._drawExit(ctx) });
     items.push({ y: this.player.y + 15, fn: () => this.player.draw(ctx) });
     if (!this.dormant) for (const s of this.slenders) items.push({ y: s.y + 16, fn: () => s.draw(ctx) });
@@ -474,8 +500,26 @@ class TDGame {
       lx.fillStyle = gg; lx.beginPath(); lx.arc(gx, gy, g.radius, 0, Math.PI * 2); lx.fill();
     }
 
+    // Luz de la fogata (tiembla como fuego de verdad)
+    for (const pr of TDLevel.props) {
+      if (!pr.lit) continue;
+      const fx = pr.x - this.camX, fy = pr.y - this.camY;
+      const fr = 175 + Math.sin(Date.now() / 90) * 8 + Math.random() * 6;
+      const fg = lx.createRadialGradient(fx, fy, 10, fx, fy, fr);
+      fg.addColorStop(0, "rgba(0,0,0,1)"); fg.addColorStop(0.6, "rgba(0,0,0,0.75)"); fg.addColorStop(1, "rgba(0,0,0,0)");
+      lx.fillStyle = fg; lx.beginPath(); lx.arc(fx, fy, fr, 0, Math.PI * 2); lx.fill();
+    }
+
     lx.globalCompositeOperation = "source-over";
     ctx.drawImage(this.lightCanvas, 0, 0);
+
+    for (const pr of TDLevel.props) {
+      if (!pr.lit) continue;
+      const fx = pr.x - this.camX, fy = pr.y - this.camY;
+      const warm = ctx.createRadialGradient(fx, fy, 6, fx, fy, 170);
+      warm.addColorStop(0, "rgba(255,150,60,0.22)"); warm.addColorStop(1, "rgba(255,150,60,0)");
+      ctx.fillStyle = warm; ctx.beginPath(); ctx.arc(fx, fy, 170, 0, Math.PI * 2); ctx.fill();
+    }
 
     if (lightOn) {
       const ang = Math.atan2(p.fy, p.fx), spread = 0.5, len = 330;
