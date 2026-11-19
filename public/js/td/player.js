@@ -135,6 +135,16 @@ class TDPlayer {
     ctx.fillStyle = "#1a1a1a";
     ctx.fillRect(x + (s > 0 ? 2 : -4), y - 22, 2, 2);
 
+    // La linterna en la mano, apuntando a donde mira
+    if (this.battery > 0 || this.flashlight) {
+      const hx = x + (s > 0 ? 10 : -10), hy = y - 2;
+      const a = Math.atan2(this.fy, this.fx);
+      ctx.save(); ctx.translate(hx, hy); ctx.rotate(a);
+      ctx.fillStyle = "#2a2a30"; ctx.fillRect(-2, -2, 11, 4);
+      ctx.fillStyle = this.flashlight ? "#ffe9a8" : "#7a6a40"; ctx.fillRect(8, -3, 3, 6);
+      ctx.restore();
+    }
+
     ctx.restore();
   }
 }

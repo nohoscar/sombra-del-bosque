@@ -635,7 +635,7 @@ Cinematic.titleCard = function (o) {
       if (phase === "in") return;
       const t = phase === "out" ? 99 : t0;
       // Golpe de estatica al entrar
-      if (phase === "hold" && t < 0.45) {
+      if (phase === "hold" && t < 0.45 && !(typeof Settings !== "undefined" && Settings.lessFlash)) {
         for (let i = 0; i < 260; i++) {
           const v = Math.random() * 255 | 0;
           ctx.fillStyle = `rgba(${v},${v},${v},${0.9 - t * 2})`;

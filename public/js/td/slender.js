@@ -299,7 +299,8 @@ class TDSlender {
         const dx = x - p.x, dy = y - p.y;
         if ((p.fx * dx + p.fy * dy) / (Math.hypot(dx, dy) || 1) > 0.5 && kind === "near") continue;
         this.x = x; this.y = y; this._path = []; this.pathT = 0;
-        this.blinkCd = this.state === "chase" ? 4 + Math.random() * 3 : 7 + Math.random() * 5;
+        const bm = (typeof Difficulty !== "undefined" && Difficulty.get().blink) || 1;
+        this.blinkCd = (this.state === "chase" ? 4 + Math.random() * 3 : 7 + Math.random() * 5) * bm;
         return kind;
       }
     }

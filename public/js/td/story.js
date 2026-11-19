@@ -142,6 +142,31 @@ const Story = {
       onNote(g, S) {
         const got = TDLevel.notes.filter((n) => n.collected).length;
         if (got >= 2) S.flags.avistar = true;
+        if (got === TDLevel.notes.length) S.after(1, () => g.hint("Busca la baliza del sendero", 4));
+      },
+      // La baliza: ilumina el camino a la salida... y le avisa que estas aqui
+      onProp(g, S, pr) {
+        if (pr.kind !== "baliza") return;
+        Sound.hit();
+        g.static = Math.min(100, g.static + 20);
+        g.say("Ya se donde esta la salida. Y el ya sabe donde estoy.", 4.5, "n1_baliza_on");
+        let best = null, bd = Infinity;
+        for (const s of g.slenders) { const d = Math.hypot(s.x - pr.x, s.y - pr.y); if (d < bd) { bd = d; best = s; } }
+        if (best) { g.wake(); best.enrage(); best.blinkCd = 2; }
+      },
+      goal(g) {
+        const left = TDLevel.notes.filter((n) => !n.collected).length;
+        if (left) return `Sigue las huellas de Tommy (${TDLevel.notes.length - left}/${TDLevel.notes.length})`;
+        const bz = TDLevel.props.find((q) => q.kind === "baliza");
+        if (bz && !bz.lit) return "Prende la baliza del sendero";
+        return "Sigue el camino iluminado hasta la salida";
+      },
+      exitBlock(g) {
+        const left = TDLevel.notes.filter((n) => !n.collected).length;
+        if (left) return `Faltan ${left} nota(s)`;
+        const bz = TDLevel.props.find((q) => q.kind === "baliza");
+        if (bz && !bz.lit) return "Esta muy oscuro. Prende la baliza primero.";
+        return null;
       },
     },
 

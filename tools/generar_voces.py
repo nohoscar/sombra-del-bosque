@@ -41,6 +41,7 @@ LINEAS = {
     "n1_miller": (MILLER, "[cansado, voz grave] Día catorce de búsqueda. Nunca hay cuerpos. [pausa] Nunca. [en voz baja] Los perros no ladran... se sientan... y miran hacia arriba."),
     "n1_baliza": (ALEX, "[susurrando] La baliza del sendero está apagada. Si la enciendo, veré el camino. [pausa] Pero él también me verá a mí. [decidido] Aguanta, Tommy."),
     "n1_tommy": (TOMMY, "[susurro infantil, asustado] Alex... no vengas. [pausa] [voz quebrada] Él dice que tú también eres de la familia."),
+    "n1_baliza_on": (ALEX, "[jadeando, aterrado] Ya sé dónde está la salida. [pausa] Y él ya sabe dónde estoy."),
     "n2_inicio": (ALEX, "[en voz baja, inquieto] El campamento Willow. Cerrado hace años. [pausa] Y la fogata... sigue encendida."),
     "n2_bitacora": (CONSEJERA, "[cansada, nerviosa] Noche seis. Los niños dibujan al hombre flaco de los pinos. Les dije que no existe. [pausa] Hoy conté las literas. Falta una. [en voz baja] Y nadie recuerda de quién era."),
     "n2_cab1": (ALEX, "[susurrando] Tres literas."),

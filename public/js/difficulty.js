@@ -1,3 +1,12 @@
+// Opciones del jugador (se guardan en el navegador)
+const Settings = {
+  lessFlash: (() => { try { return localStorage.getItem("sombra_menos_destellos") === "1"; } catch (e) { return false; } })(),
+  setLessFlash(v) {
+    this.lessFlash = !!v;
+    try { localStorage.setItem("sombra_menos_destellos", v ? "1" : "0"); } catch (e) {}
+  },
+};
+
 // Sistema de dificultad. Multiplicadores que afectan al enemigo, la batería y el miedo.
 const Difficulty = {
   current: "normal",
@@ -14,6 +23,7 @@ const Difficulty = {
       fearMul: 0.7,
       genCharges: 3,     // usos de generadores (zonas de luz)
       litDuration: 11,   // segundos que dura encendido
+      blink: 1.8,        // que tan seguido aparece de golpe (mayor = menos seguido)
     },
     normal: {
       label: "NORMAL",
@@ -26,6 +36,7 @@ const Difficulty = {
       fearMul: 1.0,
       genCharges: 2,
       litDuration: 9,
+      blink: 1,
     },
     dificil: {
       label: "DIFICIL",
@@ -38,6 +49,7 @@ const Difficulty = {
       fearMul: 1.3,
       genCharges: 1,
       litDuration: 7,
+      blink: 0.7,
     },
   },
 

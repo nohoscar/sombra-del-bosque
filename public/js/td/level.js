@@ -153,6 +153,7 @@ const TDLevel = {
     this.props = [];
     this.propTiles = new Set();
     this.trail = null; this.prints = [];
+    this.water = new Set(); this.bridge = new Set();
   },
 
   load(i) {
@@ -195,12 +196,15 @@ const TDLevel = {
         }
     }
 
-    // Notas (5) repartidas
-    const noteFr = [[0.5, 0.12], [0.85, 0.42], [0.15, 0.52], [0.72, 0.78], [0.32, 0.9]];
+    // Notas (5) repartidas; cada noche las acomoda distinto (espejo) para que no se aprendan
+    const base = [[0.5, 0.12], [0.85, 0.42], [0.15, 0.52], [0.72, 0.78], [0.32, 0.9]];
+    const tf = [[0, 0], [1, 0], [0, 0], [0, 1], [1, 1], [0, 0]][i] || [0, 0];
+    const noteFr = d.noteAt || base.map(([x, y]) => [tf[0] ? 1 - x : x, tf[1] ? 1 - y : y]);
     this.notes = d.notes.map((note, k) => {
       const f = noteFr[k % noteFr.length];
-      const c = Math.max(2, Math.min(C - 3, Math.round(C * f[0])));
-      const r = Math.max(2, Math.min(R - 3, Math.round(R * f[1])));
+      const jx = (this._rand() - 0.5) * 0.06, jy = (this._rand() - 0.5) * 0.06;
+      const c = Math.max(2, Math.min(C - 3, Math.round(C * (f[0] + (d.props ? 0 : jx)))));
+      const r = Math.max(2, Math.min(R - 3, Math.round(R * (f[1] + (d.props ? 0 : jy)))));
       this._clearRadius(c, r, 1);
       return { ...this.center(c, r), tile: { c, r }, collected: false, kind: note.kind, title: note.title, text: note.text, voice: note.voice, id: note.id };
     });
@@ -259,6 +263,38 @@ const TDLevel = {
       placed++;
     }
 
+    // Rio con un solo puente (Noche 1): cruza todo el mapa; solo se pasa por el puente
+    this.water = new Set(); this.bridge = new Set(); this.riverRow = null;
+    if (d.river) {
+      const avoid = new Set([3, this.exit.tile.r, ...this.notes.map((n) => n.tile.r), ...this.props.map((p) => p.tile.r)]);
+      let r0 = Math.round(R * 0.5);
+      for (let dr = 0; dr < R / 3; dr++) {
+        const ok = (r) => ![r - 1, r, r + 1, r + 2].some((x) => avoid.has(x));
+        if (ok(r0 + dr)) { r0 += dr; break; }
+        if (ok(r0 - dr)) { r0 -= dr; break; }
+      }
+      const bc = Math.round(C * d.river.bridge);
+      for (let c = 1; c < C - 1; c++)
+        for (const r of [r0, r0 + 1]) {
+          if (Math.abs(c - bc) <= 1) { this.grid[r][c] = 0; this.bridge.add(r + "," + c); }
+          else { this.grid[r][c] = 1; this.water.add(r + "," + c); this.bushes.delete(r + "," + c); }
+        }
+      // Caminos al puente desde cada lado, sin cruzar el agua
+      this._clearRadius(bc, r0 - 1, 1); this._clearRadius(bc, r0 + 2, 1);
+      const up = [{ c: 3, r: 3 }, ...this.notes.map((n) => n.tile), ...this.props.map((p) => p.tile), ...this.batteries.map((b) => this.tileAtPx(b.x, b.y))];
+      for (const t of [...up, this.exit.tile]) {
+        if (t.r < r0) this._carve(bc, r0 - 1, t.c, t.r);
+        else if (t.r > r0 + 1) this._carve(bc, r0 + 2, t.c, t.r);
+      }
+      for (const k of this.water) { const [r, c] = k.split(",").map(Number); this.grid[r][c] = 1; }
+      for (const k of this.bridge) { const [r, c] = k.split(",").map(Number); this.grid[r][c] = 0; }
+      for (const b of this.batteries) {
+        const bt = this.tileAtPx(b.x, b.y);
+        if (this.water.has(bt.r + "," + bt.c)) { const p = this.center(bc + 2, r0 - 1); b.x = p.x; b.y = p.y; this.grid[r0 - 1][bc + 2] = 0; }
+      }
+      this.riverRow = r0;
+    }
+
     // Cabanas: se levantan al final para que ningun camino las atraviese.
     // Ocupan 3x2 casillas; se revisan desde la puerta (abajo al centro).
     this.propTiles = new Set();
@@ -284,9 +320,12 @@ const TDLevel = {
     // Rastro de huellas: de la salida del jugador, por cada nota en orden, hasta la salida
     this.trail = null; this.prints = [];
     if (d.trail) {
-      const stops = [{ c: 3, r: 3 }, ...this.notes.map((n) => n.tile), this.exit.tile];
+      const baliza = this.props.find((p) => p.kind === "baliza");
+      const stops = [{ c: 3, r: 3 }, ...this.notes.map((n) => n.tile), ...(baliza ? [baliza.tile] : []), this.exit.tile];
       const pts = [this.center(3, 3)];
+      this.trailFinal = Infinity;   // desde aqui, el rastro solo se ve con la baliza prendida
       for (let k = 0; k < stops.length - 1; k++) {
+        if (baliza && k === stops.length - 2) this.trailFinal = pts.length;
         const seg = this.findPath(stops[k].c, stops[k].r, stops[k + 1].c, stops[k + 1].r);
         if (seg) pts.push(...seg);
       }
@@ -296,12 +335,13 @@ const TDLevel = {
       for (let k = 1; k < pts.length; k++) {
         const a = pts[k - 1], b = pts[k], len = Math.hypot(b.x - a.x, b.y - a.y);
         const ang = Math.atan2(b.y - a.y, b.x - a.x);
+        const fin = k > this.trailFinal;
         let s = 30 - carry;
         for (; s <= len; s += 30) {
           const x = a.x + Math.cos(ang) * s, y = a.y + Math.sin(ang) * s;
           side = -side; n++;
-          this.prints.push({ x: x - Math.sin(ang) * 6 * side, y: y + Math.cos(ang) * 6 * side, ang, big: false });
-          if (n % 5 === 0) this.prints.push({ x: x + Math.sin(ang) * 16, y: y - Math.cos(ang) * 16, ang, big: true });
+          this.prints.push({ x: x - Math.sin(ang) * 6 * side, y: y + Math.cos(ang) * 6 * side, ang, big: false, fin });
+          if (n % 5 === 0) this.prints.push({ x: x + Math.sin(ang) * 16, y: y - Math.cos(ang) * 16, ang, big: true, fin });
         }
         carry = len - (s - 30);
       }
@@ -332,7 +372,7 @@ const TDLevel = {
   // ================= CUARTOS (interior de las cabanas) =================
   // Guarda el bosque al entrar y lo devuelve igual al salir.
   _SNAP: ["cols", "rows", "grid", "tileMap", "notes", "generators", "batteries", "exit", "start", "slenderConfigs",
-    "bushes", "props", "propTiles", "trail", "prints", "ambient"],
+    "bushes", "props", "propTiles", "trail", "prints", "ambient", "water", "bridge"],
   snapshot() { const s = {}; for (const k of this._SNAP) s[k] = this[k]; return s; },
   restore(s) { for (const k of this._SNAP) this[k] = s[k]; this.room = null; this.beds = []; },
 
@@ -426,7 +466,9 @@ const TDLevel = {
       ambient: { tint: "rgba(40,60,90,0.05)", dark: 0.60 },
       dormant: true,
       outroVoice: "n1_tommy",
-      cols: 44, rows: 28, density: 0.045, gens: 2,
+      cols: 44, rows: 28, density: 0.045, gens: 0, scene: "sendero",
+      river: { bridge: 0.6 },
+      props: [{ kind: "baliza", at: [0.74, 0.7] }],
       slenders: [{ speed: 100, viewDist: 300, persistence: 0.55 }],
       notes: [
         { kind: "aviso", title: "AVISO DEL PARQUE (tachado)", text: "PROHIBIDO EL PASO PASADO EL ANOCHECER.\n\n[grabado con navaja]: 'no sirve. el no usa el sendero.'" },
@@ -437,7 +479,7 @@ const TDLevel = {
       ],
     },
     {
-      label: "NOCHE 2", intro: "El sendero muere en un campamento de verano cerrado hace anos.\nAlguien dejo encendida la fogata.", name: "El Campamento", cols: 52, rows: 32, density: 0.05, gens: 3,
+      label: "NOCHE 2", intro: "El sendero muere en un campamento de verano cerrado hace anos.\nAlguien dejo encendida la fogata.", name: "El Campamento", cols: 52, rows: 32, density: 0.05, gens: 0, scene: "campamento",
       outro: "La fogata se apago sola.\nEn el humo, por un segundo, vi a doce ninos.\nUno traia la gorra de Tommy.",
       outroVoice: "n2_final",
       ambient: { tint: "rgba(50,50,80,0.07)", dark: 0.62 },

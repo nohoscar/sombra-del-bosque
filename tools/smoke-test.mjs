@@ -82,6 +82,39 @@ for (let i = 0; i < 60 * 20; i++) { Input.keys.right = i % 200 < 100; Input.keys
 Input.keys = {};
 ok(true, `20 s jugando sin errores (estado: ${game.state}, estatica max ${Math.round(maxT)})`);
 
+console.log("\nNOCHE 1: RIO Y BALIZA");
+{
+  game.beginNight(1);
+  ok(TDLevel.water.size > 20 && TDLevel.bridge.size >= 6, `hay rio (${TDLevel.water.size}) y puente (${TDLevel.bridge.size})`);
+  const s0 = TDLevel.tileAtPx(TDLevel.start.x, TDLevel.start.y);
+  const bz = TDLevel.props.find((q) => q.kind === "baliza");
+  for (const t of [...TDLevel.notes.map((n) => n.tile), bz.tile, TDLevel.exit.tile, ...TDLevel.batteries.map((b) => TDLevel.tileAtPx(b.x, b.y))])
+    ok(TDLevel.findPath(s0.c, s0.r, t.c, t.r) !== null, `  se llega a (${t.c},${t.r}) cruzando el puente`);
+  game.slenders.forEach((s) => { s.x = 40; s.y = 40; s.speed = 0; s.blinkCd = 1e9; });
+  for (const n of TDLevel.notes) n.collected = true;
+  tp(TDLevel.exit.x, TDLevel.exit.y); step(2); press("interact");
+  ok(game.state === "playing", "sin baliza no se puede salir");
+  tp(bz.x, bz.y + 30); Input.press("interact"); step(60 * 2.3); Input.release("interact"); step(2);
+  ok(bz.lit, "mantener E prende la baliza");
+  ok(game.slenders.some((s) => s.state === "chase"), "  y el viene por ti");
+  game.slenders.forEach((s) => { s.state = "patrol"; s.detection = 0; });
+  tp(TDLevel.exit.x, TDLevel.exit.y); step(2); press("interact");
+  ok(game.state === "nightcomplete", `con la baliza prendida, sales (estado: ${game.state})`);
+}
+
+console.log("\nGUARDADO A MEDIO CAMINO");
+{
+  game.clearCheckpoint();
+  game.beginNight(2);
+  game.slenders.forEach((s) => { s.x = 40; s.y = 40; s.speed = 0; s.blinkCd = 1e9; });
+  for (let k = 0; k < 2; k++) { const n = TDLevel.notes[k]; tp(n.x, n.y); step(2); press("interact"); closeNote(); step(3); }
+  game._lose(); ok(game.state === "gameover", "mueres");
+  game.retry();
+  ok(TDLevel.notes.filter((n) => n.collected).length === 2, "al reintentar, conservas las 2 notas");
+  game.clearCheckpoint(); game.beginNight(2);
+  ok(TDLevel.notes.every((n) => !n.collected), "nueva partida: empieza de cero");
+}
+
 console.log("\nNOCHE 2");
 game.beginNight(2);
 const fog = TDLevel.props[0];
@@ -157,7 +190,7 @@ console.log("\nEL ESBELTO");
   p.hidden = false; s.caught = false; s.state = "chase"; s.stun = 0; s.blinkCd = 0;
   let moved = 0;
   for (let k = 0; k < 20 && !moved; k++) {
-    const a = Math.random() * Math.PI * 2; s.x = p.x + Math.cos(a) * 450; s.y = p.y + Math.sin(a) * 450;
+    const a = (Math.random() - 0.5) * 1.2; p.fx = -1; p.fy = 0; s.x = p.x + Math.cos(a) * 450; s.y = p.y + Math.sin(a) * 450;
     if (TDLevel.circleHitsWall(s.x, s.y, 14)) continue;
     const before = Math.hypot(s.x - p.x, s.y - p.y); s.blinkCd = 0;
     if (s.blink(p, false, 1 / 60)) moved = before - Math.hypot(s.x - p.x, s.y - p.y);
@@ -178,7 +211,7 @@ console.log("\nMENU");
   const cv = mkCanvas(); MS.init(cv);
   for (const prog of [0, 1, 3]) { MS.progress = prog; for (let i = 0; i < 120; i++) { MS.update(1 / 60); MS.draw(cv.getContext()); } }
   ok(true, "el menu se dibuja con avance 0, 1 y 3");
-  MS.slender = null; MS.nextSlender = 0; MS.update(1 / 60);
+  MS.slender = null; MS.nextSlender = 0; MS.mx = -500; MS.my = -500; MS.moved = 99; MS.update(1 / 60);
   ok(!!MS.slender, "el Esbelto aparece entre los pinos");
   for (let i = 0; i < 90; i++) MS.update(1 / 60);
   const s = MS.slender, par = (MS.mx / 1024 - 0.5) * 24;

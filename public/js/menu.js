@@ -103,7 +103,7 @@ const MenuScene = {
         const y = Math.random() * H, h = 4 + Math.random() * 26;
         ctx.drawImage(this.canvas, 0, y, W, h, (Math.random() - 0.5) * 70 * k, y, W, h);
       }
-      ctx.fillStyle = `rgba(220,225,235,${0.18 * k})`; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = `rgba(220,225,235,${(Settings.lessFlash ? 0.03 : 0.18) * k})`; ctx.fillRect(0, 0, W, H);
     }
   },
 

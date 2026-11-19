@@ -44,6 +44,10 @@ window.addEventListener("load", () => {
   const closePanels = () => { hide($("panel-diff")); hide($("panel-controls")); menuMain.classList.remove("hidden"); };
   $("diff-open").addEventListener("click", () => openPanel("panel-diff"));
   $("controls-open").addEventListener("click", () => openPanel("panel-controls"));
+  // Menos destellos: para quien es sensible a las luces que parpadean
+  const refreshFlash = () => { $("flash-current").textContent = Settings.lessFlash ? "MENOS" : "NORMAL"; };
+  $("flash-toggle").addEventListener("click", () => { Settings.setLessFlash(!Settings.lessFlash); refreshFlash(); });
+  refreshFlash();
   document.querySelectorAll(".panel-back").forEach((b) => b.addEventListener("click", closePanels));
   const backToMenu = () => { closePanels(); show(startScreen); refreshContinue(); Sound.menuStart(); };
 
@@ -133,7 +137,7 @@ window.addEventListener("load", () => {
   });
 
   // Botones
-  $("start-btn").addEventListener("click", () => { hide(startScreen); Sound.menuStop(); Cinematic.play(Cinematic.OPENING, () => showNightIntro(0)); });
+  $("start-btn").addEventListener("click", () => { hide(startScreen); Sound.menuStop(); game.clearCheckpoint(); Cinematic.play(Cinematic.OPENING, () => showNightIntro(0)); });
   continueBtn.addEventListener("click", () => { hide(startScreen); Sound.menuStop(); showNightIntro(loadProgress()); });
   $("retry-btn").addEventListener("click", () => { hide(gameoverScreen); game.retry(); });
   nightBtn.addEventListener("click", () => Sound.stopVoice());
@@ -234,6 +238,13 @@ window.addEventListener("load", () => {
     p.flashlight = true; p.fx = 1; p.fy = 0;
     for (let d = 200; d > 90; d -= 10) if (!TDLevel.circleHitsWall(p.x + d, p.y, 14)) { s.x = p.x + d; s.y = p.y; break; }
     s.state = "chase"; s.blinkCd = 999; s.stunCd = 999; s.speed = 0; s.vis = 1; game.faceCd = 999;
+  }
+  if (h === "#prueba-rio") {
+    hide(startScreen); game.beginNight(1); game.fadeIn = 0;
+    const [r, c] = [...TDLevel.bridge][0].split(",").map(Number);
+    const pt = TDLevel.center(c + 1, r - 2);
+    game.player.x = pt.x; game.player.y = pt.y; game.player.flashlight = true; game.player.fx = 0; game.player.fy = 1;
+    game._camera(true);
   }
   if (h === "#prueba-letrero") {
     hide(startScreen);

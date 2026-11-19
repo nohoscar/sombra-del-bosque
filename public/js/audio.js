@@ -120,7 +120,7 @@ const Sound = {
     "op_1", "op_2", "op_3", "pr_tommy", "pr_contestadora", "pr_dibujo", "pr_ventana", "pr_caja",
     "pr_linterna", "pr_salir", "in_1", "n1_inicio", "n1_arbusto", "n1_ahi", "n1_huellas", "n1_miller",
     "n1_baliza", "n1_tommy", "n2_inicio", "n2_bitacora", "n2_literas", "n2_cinta", "n2_tommy", "n2_nolo",
-    "n2_dibujo", "n2_final", "n2_cab1", "n2_cab2", "n2_cab3",
+    "n2_dibujo", "n2_final", "n2_cab1", "n2_cab2", "n2_cab3", "n1_baliza_on",
   ],
   voices: {},
   _voiceSrc: null,
@@ -183,6 +183,84 @@ const Sound = {
     const n = 1024, c = new Float32Array(n);
     for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(x * 2.2); }
     return (this.__crunch = c);
+  },
+
+  // ================= SONIDO DE CADA LUGAR =================
+  // Cada capitulo suena distinto: la casa cruje, en el sendero hay buhos y un rio,
+  // en el campamento rechina un columpio y las lonas golpean con el viento.
+  setScene(name) {
+    this._scene = name;
+    if (this.ctx) this._nextAmb = this.ctx.currentTime + 5 + Math.random() * 4;
+  },
+
+  setRiver(v) {
+    if (!this._river) return;
+    this._river.gain.setTargetAtTime(Math.max(0, Math.min(1, v)) * 0.11, this.ctx.currentTime, 0.4);
+  },
+
+  // Respiracion agitada de Alex
+  breath(vol) {
+    if (!this.started) return;
+    const ctx = this.ctx, t = ctx.currentTime;
+    [[0, 900, 0.32], [0.36, 650, 0.4]].forEach(([d, f, len]) => {
+      const n = ctx.createBufferSource(); n.buffer = this._noiseBuf;
+      const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = 0.8;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t + d); g.gain.linearRampToValueAtTime(vol * 0.5, t + d + len * 0.4);
+      g.gain.linearRampToValueAtTime(0.0001, t + d + len);
+      n.connect(bp); bp.connect(g); g.connect(this.master); n.start(t + d, Math.random()); n.stop(t + d + len + 0.05);
+    });
+  },
+
+  _sceneSound() {
+    const ctx = this.ctx, t = ctx.currentTime, sc = this._scene;
+    const pan = (v) => { if (!ctx.createStereoPanner) return this.master; const p = ctx.createStereoPanner(); p.pan.value = v; p.connect(this.master); return p; };
+    const side = Math.random() * 1.6 - 0.8;
+    if (sc === "campamento" && Math.random() < 0.6) {
+      // Columpio oxidado: va y viene, dos veces
+      const out = pan(side);
+      for (let k = 0; k < 2; k++) {
+        const o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+        o.type = "sawtooth"; lp.type = "bandpass"; lp.frequency.value = 1400; lp.Q.value = 6;
+        const w = t + k * 1.3;
+        o.frequency.setValueAtTime(620, w); o.frequency.linearRampToValueAtTime(510, w + 0.5);
+        g.gain.setValueAtTime(0.0001, w); g.gain.linearRampToValueAtTime(0.06, w + 0.1); g.gain.linearRampToValueAtTime(0.0001, w + 0.55);
+        o.connect(lp); lp.connect(g); g.connect(out); g.connect(this._reverb); o.start(w); o.stop(w + 0.6);
+      }
+    } else if (sc === "campamento") {
+      // Lona golpeando con el viento
+      const out = pan(side);
+      for (let k = 0; k < 3; k++) {
+        const n = ctx.createBufferSource(); n.buffer = this._noiseBuf;
+        const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 500;
+        const g = ctx.createGain(), w = t + k * 0.18;
+        g.gain.setValueAtTime(0.22, w); g.gain.exponentialRampToValueAtTime(0.0001, w + 0.12);
+        n.connect(lp); lp.connect(g); g.connect(out); n.start(w, Math.random()); n.stop(w + 0.15);
+      }
+    } else if (sc === "sendero" && Math.random() < 0.55) {
+      // Buho lejano
+      const out = pan(side);
+      [[0, 0.32], [0.5, 0.55]].forEach(([d, len]) => {
+        const o = ctx.createOscillator(), g = ctx.createGain(), w = t + d;
+        o.type = "sine"; o.frequency.setValueAtTime(410, w); o.frequency.linearRampToValueAtTime(360, w + len);
+        g.gain.setValueAtTime(0.0001, w); g.gain.linearRampToValueAtTime(0.05, w + 0.06); g.gain.linearRampToValueAtTime(0.0001, w + len);
+        o.connect(g); g.connect(out); g.connect(this._reverb); o.start(w); o.stop(w + len + 0.05);
+      });
+    } else if (sc === "casa") {
+      // La casa se asienta: crujido grave de madera
+      const o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+      o.type = "sawtooth"; lp.type = "lowpass"; lp.frequency.value = 420;
+      o.frequency.setValueAtTime(190, t); o.frequency.linearRampToValueAtTime(130, t + 0.9);
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.05, t + 0.2); g.gain.linearRampToValueAtTime(0.0001, t + 0.95);
+      o.connect(lp); lp.connect(g); g.connect(pan(side)); o.start(t); o.stop(t + 1);
+    } else {
+      // Rama que se rompe en algun lado
+      const n = ctx.createBufferSource(); n.buffer = this._noiseBuf;
+      const bp = ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 2200; bp.Q.value = 2;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+      n.connect(bp); bp.connect(g); g.connect(pan(side)); n.start(t, Math.random()); n.stop(t + 0.1);
+    }
   },
 
   // Paso del Esbelto: golpe grave y crujido de ramas, colocado a la izquierda o derecha
@@ -277,6 +355,11 @@ const Sound = {
     this._sub = ctx.createGain(); this._sub.gain.value = 0;
     [36, 36.7].forEach((f) => { const o2 = ctx.createOscillator(); o2.type = "sine"; o2.frequency.value = f; o2.connect(this._sub); o2.start(); });
     this._sub.connect(this.master);
+    // Rio: ruido de agua que sube al acercarte
+    this._river = ctx.createGain(); this._river.gain.value = 0;
+    const rs = ctx.createBufferSource(); rs.buffer = this._noiseBuf; rs.loop = true;
+    const rbp = ctx.createBiquadFilter(); rbp.type = "bandpass"; rbp.frequency.value = 700; rbp.Q.value = 0.5;
+    rs.connect(rbp); rbp.connect(this._river); this._river.connect(this.master); rs.start();
 
     this._music = "off"; this._chase = 0; this._nextDrum = 0; this._drumStep = 0;
     this._nextWhisper = ctx.currentTime + 20;
@@ -356,6 +439,10 @@ const Sound = {
   // Percusion de persecucion y susurros que rodean (se llaman desde update)
   _musicTick() {
     const ctx = this.ctx, t = ctx.currentTime;
+    if (this._scene && this._music !== "off" && t >= (this._nextAmb || 0)) {
+      this._sceneSound();
+      this._nextAmb = t + 9 + Math.random() * 10;
+    }
     if (this._chase > 0 && t >= this._nextDrum - 0.1) {
       const step = this._drumStep++ % 8, when = Math.max(t, this._nextDrum);
       if (step === 0 || step === 3 || step === 6) this._drum(when, 0.5, 58);
@@ -442,6 +529,7 @@ const Sound = {
     if (!this.started) return;
     this.setMusic("off");
     this.setProximity(0);
+    this.setRiver(0);
     this._windGain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.6);
     this.setStatic(0);
     this.setTension(0);

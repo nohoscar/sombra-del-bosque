@@ -471,3 +471,4 @@ button:hover {
   .menu-item { font-size: 15px; }
   .menu-tag { font-size: 13px; margin-bottom: 18px; }
 }
+.menu-foot.menu-warn { margin-top: 8px; color: #6e5a4a; }
