@@ -44,6 +44,6 @@ createServer(async (req, res) => {
   } catch (e) {
     res.writeHead(500); res.end("Server error");
   }
-}).listen(PORT, () => {
+}).listen(PORT, "127.0.0.1", () => {
   console.log(`Servidor listo en http://localhost:${PORT}`);
 });

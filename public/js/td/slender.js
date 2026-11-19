@@ -24,7 +24,10 @@ class TDSlender {
     this.caught = false;
     this.flicker = 0;
     this.stuck = 0;
-    this.lunge = 0;   // embestida (más veloz) al ser iluminado
+    this.lunge = 0;   // embestida (más veloz) cuando lo provocas
+    this.stun = 0;    // la linterna lo frena un instante
+    this.stunCd = 0;  // espera antes de poder frenarlo otra vez
+    this.lastX = null; this.lastY = null;  // donde te vio por ultima vez
 
     // Puntos de patrulla: tiles de piso repartidos
     this.waypoints = this._genWaypoints(6);
@@ -111,17 +114,26 @@ class TDSlender {
     return this._moveToward(gx, gy, speed, dt); // fallback directo (cerca)
   }
 
-  // La linterna lo alcanza: se enfurece y carga hacia el jugador
-  onLit() {
+  // Te enfurece (por ejemplo, si te ve encender un foco): carga hacia ti
+  enrage() {
     this.state = "chase";
     this.detection = 100;
     this.lunge = Math.max(this.lunge, 1.1);
     this.pathT = 0;
   }
 
+  // La linterna lo alcanza: se congela un instante. Devuelve true si lo freno.
+  onLit() {
+    if (this.stunCd > 0 || this.stun > 0) return false;
+    this.stun = 1.3; this.stunCd = 4.5;
+    // Si no te perseguia, ahora sabe que estas ahi
+    if (this.state !== "chase") { this.detection = Math.max(this.detection, 70); this.state = "suspicious"; }
+    return true;
+  }
+
   // Atraído por el ruido de encender un foco: se acerca al punto
   lureTo(x, y, dt) {
-    if (this.state === "chase") return;
+    if (this.state === "chase" || this.stun > 0) return;
     this._moveToward(x, y, this.speed * 1.15, dt);
     this.detection = Math.min(100, this.detection + 45 * dt);
     if (this.detection > 45) this.state = "suspicious";
@@ -130,20 +142,25 @@ class TDSlender {
   update(dt, p) {
     this.flicker += dt;
     if (this.lunge > 0) this.lunge -= dt;
+    if (this.stunCd > 0) this.stunCd -= dt;
+    if (this.stun > 0) { this.stun -= dt; return; }   // congelado por la luz
     const dist = Math.hypot(p.x - this.x, p.y - this.y);
     const sees = this.canSee(p);
     const hears = dist < 240 * p.noise && !p.hidden && TDLevel.lineOfSight(this.x, this.y, p.x, p.y);
+    if (sees || (this.state === "chase" && !p.hidden)) { this.lastX = p.x; this.lastY = p.y; }
 
     if (this.state === "chase") {
       if (p.hidden) {
-        // Perdió el rastro: navega al último punto y afloja
-        this.detection -= (65 * this.hideLose / this.persistence) * dt;
-        this._navigate(p.x, p.y, this.speed * 1.3, dt, 0.35);
+        // Va a donde te vio por ultima vez y revisa. Si te escondiste ahi mismo, te encuentra.
+        this.detection -= (35 * this.hideLose / this.persistence) * dt;
+        const gx = this.lastX ?? p.x, gy = this.lastY ?? p.y;
+        this._navigate(gx, gy, this.speed * 1.2, dt, 0.35);
+        if (dist < 34 && this.detection > 40) this.caught = true;
         if (this.detection <= 25) { this.state = "patrol"; this.wp = this._nearestWaypoint(); this.pathT = 0; }
       } else {
         this.detection = 100;
-        // Persecución: más lento que correr (podés escapar), embiste si te iluminó
-        const chaseSpeed = this.speed * (this.lunge > 0 ? 1.9 : 1.5);
+        // Persecución: más lento que correr (podés escapar), embiste si lo provocaste
+        const chaseSpeed = this.speed * (this.lunge > 0 ? 1.9 : 1.3);
         this._navigate(p.x, p.y, chaseSpeed, dt, 0.25);
         if (dist < 20) this.caught = true;
       }
@@ -203,56 +220,91 @@ class TDSlender {
     ctx.fill();
   }
 
-  // Cuerpo en perspectiva 3/4: figura alta y delgada, anclada por los pies
+  // Cuerpo en perspectiva 3/4: figura muy alta (el doble que Alex), quieta, brazos hasta las rodillas.
+  // vis (0..1) lo pone el juego: en lo oscuro casi no se ve.
   draw(ctx) {
-    const x = Math.round(this.x), y = Math.round(this.y);
-    const chasing = this.state === "chase";
-    const sway = Math.sin(this.flicker * 1.5) * 1.5;
+    const vis = this.vis ?? 1;
+    if (vis < 0.02) return;
+    const x = Math.round(this.x + (this.stun > 0 ? (Math.random() - 0.5) * 7 : 0)), y = Math.round(this.y);
+    const close = (this.closeness ?? 0);
+    // La cabeza se ladea cuando te ve
+    const tilt = (this.state === "chase" || this.state === "suspicious") ? 0.32 : 0.05;
+    ctx.save();
+    ctx.globalAlpha *= vis;
 
-    // Sombra
-    ctx.fillStyle = "rgba(0,0,0,0.45)";
-    ctx.beginPath(); ctx.ellipse(x, y + 16, 15, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,0.5)";
+    ctx.beginPath(); ctx.ellipse(x, y + 16, 16, 6, 0, 0, Math.PI * 2); ctx.fill();
 
-    // Tentáculos al perseguir (irradian desde el cuerpo)
-    if (chasing) {
-      ctx.strokeStyle = "#0a0a0d";
-      ctx.lineWidth = 3;
-      for (let i = 0; i < 5; i++) {
-        const a = (i / 5) * Math.PI * 2 + this.flicker;
-        const len = 22 + Math.sin(this.flicker * 6 + i) * 12;
-        ctx.beginPath(); ctx.moveTo(x, y - 14);
-        ctx.lineTo(x + Math.cos(a) * (16 + len), y - 14 + Math.sin(a) * (16 + len));
+    // Tentaculos solo cuando esta muy cerca: delgados, lentos
+    if (this.state === "chase" && close > 0.55) {
+      ctx.strokeStyle = "rgba(8,8,10,0.85)"; ctx.lineWidth = 2;
+      for (let i = 0; i < 4; i++) {
+        const a = -Math.PI / 2 + (i - 1.5) * 0.7 + Math.sin(this.flicker * 1.3 + i) * 0.25;
+        const len = 40 + Math.sin(this.flicker * 2 + i * 1.7) * 14;
+        ctx.beginPath(); ctx.moveTo(x, y - 54);
+        ctx.quadraticCurveTo(x + Math.cos(a) * len * 0.6 + 10, y - 54 + Math.sin(a) * len * 0.4, x + Math.cos(a) * len, y - 54 + Math.sin(a) * len);
         ctx.stroke();
       }
       ctx.lineWidth = 1;
     }
 
-    // Piernas (pantalón negro)
-    ctx.fillStyle = "#0d0d10";
-    ctx.fillRect(x - 6, y - 2, 5, 18);
-    ctx.fillRect(x + 1, y - 2, 5, 18);
+    // Piernas largas
+    ctx.fillStyle = "#0b0b0e";
+    ctx.fillRect(x - 6, y - 26, 5, 42);
+    ctx.fillRect(x + 1, y - 26, 5, 42);
+    // Torso estrecho (traje), camisa y corbata
+    ctx.fillStyle = "#131319";
+    ctx.beginPath(); ctx.moveTo(x - 9, y - 72); ctx.lineTo(x + 9, y - 72); ctx.lineTo(x + 7, y - 24); ctx.lineTo(x - 7, y - 24); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#d8d8dc"; ctx.fillRect(x - 2, y - 70, 4, 36);
+    ctx.fillStyle = "#6e1414"; ctx.fillRect(x - 1, y - 68, 2, 20);
+    // Brazos que llegan a las rodillas, con dedos largos
+    ctx.fillStyle = "#131319";
+    ctx.fillRect(x - 12, y - 70, 3, 56);
+    ctx.fillRect(x + 9, y - 70, 3, 56);
+    ctx.fillStyle = "#cfd0d4";
+    ctx.fillRect(x - 12, y - 14, 3, 9); ctx.fillRect(x + 9, y - 14, 3, 9);
+    ctx.fillRect(x - 13, y - 6, 1, 5); ctx.fillRect(x + 12, y - 6, 1, 5);
 
-    // Torso alargado (traje) + camisa/corbata
-    ctx.fillStyle = "#161620";
-    ctx.fillRect(x - 8 + sway, y - 30, 16, 30);
-    ctx.fillStyle = "#e8e8ea";
-    ctx.fillRect(x - 2 + sway, y - 28, 4, 24);
-    ctx.fillStyle = "#a01f1f";
-    ctx.fillRect(x - 1 + sway, y - 26, 2, 12);
+    // Cabeza: alargada, sin rostro, ladeada
+    ctx.save();
+    ctx.translate(x, y - 80); ctx.rotate(tilt);
+    ctx.fillStyle = "#e9eaed";
+    ctx.beginPath(); ctx.ellipse(0, 0, 7, 10, 0, 0, Math.PI * 2); ctx.fill();
+    // Sombras donde irian los ojos: casi nada, solo para que se sienta que mira
+    ctx.fillStyle = "rgba(90,90,100,0.28)";
+    ctx.beginPath(); ctx.ellipse(-2.5, -1, 2, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(2.5, -1, 2, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.restore();
+  }
 
-    // Brazos largos y finos
-    ctx.fillStyle = "#161620";
-    ctx.fillRect(x - 11 + sway, y - 28, 3, 26);
-    ctx.fillRect(x + 8 + sway, y - 28, 3, 26);
-    // Manos pálidas
-    ctx.fillStyle = "#dcdce0";
-    ctx.fillRect(x - 11 + sway, y - 4, 3, 5);
-    ctx.fillRect(x + 8 + sway, y - 4, 3, 5);
-
-    // Cabeza blanca sin rostro
-    ctx.fillStyle = "#eef0f2";
-    ctx.beginPath(); ctx.arc(x + sway, y - 38, 8, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "rgba(120,120,130,0.2)";
-    ctx.beginPath(); ctx.arc(x + sway, y - 37, 5, 0, Math.PI * 2); ctx.fill();
+  // Aparece mas cerca cuando no lo miras (no camina: "salta" en la oscuridad).
+  // looking: true si el jugador lo esta viendo. Devuelve "near" | "behind" | null.
+  blink(p, looking, dt) {
+    this.blinkCd = (this.blinkCd ?? 3) - dt;
+    if (this.blinkCd > 0 || looking || this.stun > 0 || p.hidden) return null;
+    if (this.state !== "chase" && this.state !== "suspicious") return null;
+    const dist = Math.hypot(p.x - this.x, p.y - this.y);
+    if (dist < 170) return null;
+    const fa = Math.atan2(p.fy, p.fx);
+    // A veces, justo detras de ti
+    const tries = Math.random() < 0.3 ? [["behind", fa + Math.PI, 150, 190]] : [];
+    tries.push(["near", Math.atan2(this.y - p.y, this.x - p.x), Math.max(170, dist * 0.55), Math.max(190, dist * 0.7)]);
+    for (const [kind, ang, d0, d1] of tries) {
+      for (let k = 0; k < 10; k++) {
+        const a = ang + (Math.random() - 0.5) * 0.9, d = d0 + Math.random() * (d1 - d0);
+        const x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
+        if (TDLevel.circleHitsWall(x, y, this.r)) continue;
+        // Nunca aparece frente a tu linterna
+        const dx = x - p.x, dy = y - p.y;
+        if ((p.fx * dx + p.fy * dy) / (Math.hypot(dx, dy) || 1) > 0.5 && kind === "near") continue;
+        this.x = x; this.y = y; this._path = []; this.pathT = 0;
+        const bm = (typeof Difficulty !== "undefined" && Difficulty.get().blink) || 1;
+        this.blinkCd = (this.state === "chase" ? 4 + Math.random() * 3 : 7 + Math.random() * 5) * bm;
+        return kind;
+      }
+    }
+    this.blinkCd = 1.5;
+    return null;
   }
 }

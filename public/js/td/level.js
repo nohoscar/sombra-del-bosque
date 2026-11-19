@@ -3,7 +3,7 @@
 const TDLevel = {
   TILE: 52,
   current: 0,
-  totalNights: 5,
+  totalNights: 6,   // prologo + 5 noches
 
   // Estado activo
   cols: 48, rows: 30,
@@ -17,6 +17,7 @@ const TDLevel = {
   start: { x: 0, y: 0 },
   slenderConfigs: [],
   ambient: null,
+  props: [],
 
   get worldW() { return this.cols * this.TILE; },
   get worldH() { return this.rows * this.TILE; },
@@ -119,14 +120,53 @@ const TDLevel = {
     }
   },
 
-  getInfo(i) { const d = this._defs[i]; return { num: i + 1, name: d.name, intro: d.intro }; },
+  getInfo(i) {
+    const d = this._defs[i];
+    return { num: i, label: d.label, name: d.name, intro: d.intro, outro: d.outro, button: d.button };
+  },
+
+  // Mapa dibujado a mano (prólogo): cada letra es un tipo de casilla.
+  //  T arbol  , pasto exterior  # pared  W ventana  D puerta  B cama  K barra
+  //  O sillon  M mesa  F refri  . piso  S inicio  X salida
+  _loadLayout(d) {
+    const L = d.layout;
+    this.rows = L.length; this.cols = L[0].length;
+    this.tileMap = L;
+    this.grid = [];
+    const SOLID = "T,#WDBKOMF";
+    for (let r = 0; r < this.rows; r++) {
+      const row = [];
+      for (let c = 0; c < this.cols; c++) {
+        const ch = L[r][c];
+        row.push(SOLID.includes(ch) ? 1 : 0);
+        if (ch === "S") this.start = this.center(c, r);
+        if (ch === "X") this.exit = { ...this.center(c, r), tile: { c, r } };
+      }
+      this.grid.push(row);
+    }
+    const at = (p) => this.center(p[0], p[1]);
+    this.notes = d.notes.map((n) => ({ ...at(n.at), tile: { c: n.at[0], r: n.at[1] }, collected: false, ...n }));
+    this.generators = [];
+    this.batteries = (d.items || []).map((b) => ({ ...at(b.at), taken: false, label: b.label, amount: b.amount ?? 45, id: b.id }));
+    this.slenderConfigs = [];
+    this.bushes = new Set();
+    this.props = [];
+    this.propTiles = new Set();
+    this.trail = null; this.prints = [];
+    this.water = new Set(); this.bridge = new Set();
+  },
 
   load(i) {
     this.current = i;
     const d = this._defs[i];
-    this.cols = d.cols; this.rows = d.rows;
     this.name = d.name; this.intro = d.intro;
+    this.label = d.label;
+    this.def = d;
+    this.room = null; this.beds = [];
     this.ambient = d.ambient;
+    this.tileMap = null;
+    if (d.layout) { this._loadLayout(d); return; }
+    this.cols = d.cols; this.rows = d.rows;
     this._rng = (i + 1) * 7919 + 13;
     const C = this.cols, R = this.rows;
 
@@ -156,14 +196,17 @@ const TDLevel = {
         }
     }
 
-    // Notas (5) repartidas
-    const noteFr = [[0.5, 0.12], [0.85, 0.42], [0.15, 0.52], [0.72, 0.78], [0.32, 0.9]];
+    // Notas (5) repartidas; cada noche las acomoda distinto (espejo) para que no se aprendan
+    const base = [[0.5, 0.12], [0.85, 0.42], [0.15, 0.52], [0.72, 0.78], [0.32, 0.9]];
+    const tf = [[0, 0], [1, 0], [0, 0], [0, 1], [1, 1], [0, 0]][i] || [0, 0];
+    const noteFr = d.noteAt || base.map(([x, y]) => [tf[0] ? 1 - x : x, tf[1] ? 1 - y : y]);
     this.notes = d.notes.map((note, k) => {
       const f = noteFr[k % noteFr.length];
-      const c = Math.max(2, Math.min(C - 3, Math.round(C * f[0])));
-      const r = Math.max(2, Math.min(R - 3, Math.round(R * f[1])));
+      const jx = (this._rand() - 0.5) * 0.06, jy = (this._rand() - 0.5) * 0.06;
+      const c = Math.max(2, Math.min(C - 3, Math.round(C * (f[0] + (d.props ? 0 : jx)))));
+      const r = Math.max(2, Math.min(R - 3, Math.round(R * (f[1] + (d.props ? 0 : jy)))));
       this._clearRadius(c, r, 1);
-      return { ...this.center(c, r), tile: { c, r }, collected: false, kind: note.kind, title: note.title, text: note.text };
+      return { ...this.center(c, r), tile: { c, r }, collected: false, kind: note.kind, title: note.title, text: note.text, voice: note.voice, id: note.id };
     });
 
     // Generadores
@@ -192,6 +235,15 @@ const TDLevel = {
     // Baterías (según dificultad)
     this.batteries = this._genBatteries(i);
 
+    // Decorado con historia (fogata, etc.): se limpia alrededor y se garantiza el camino
+    this.props = (d.props || []).map((pr) => {
+      const c = Math.max(3, Math.min(C - 4, Math.round(C * pr.at[0])));
+      const r = Math.max(3, Math.min(R - 4, Math.round(R * pr.at[1])));
+      this._clearRadius(c, r, 2);
+      return { ...this.center(c, r), tile: { c, r }, kind: pr.kind, lit: pr.kind === "fogata" };
+    });
+    this.props.forEach((pr) => this._carve(3, 3, pr.tile.c, pr.tile.r));
+
     // Garantiza acceso
     const st = { c: 3, r: 3 };
     this.notes.forEach((n) => this._carve(st.c, st.r, n.tile.c, n.tile.r));
@@ -210,10 +262,94 @@ const TDLevel = {
       this.bushes.add(r + "," + c);
       placed++;
     }
+
+    // Rio con un solo puente (Noche 1): cruza todo el mapa; solo se pasa por el puente
+    this.water = new Set(); this.bridge = new Set(); this.riverRow = null;
+    if (d.river) {
+      const avoid = new Set([3, this.exit.tile.r, ...this.notes.map((n) => n.tile.r), ...this.props.map((p) => p.tile.r)]);
+      let r0 = Math.round(R * 0.5);
+      for (let dr = 0; dr < R / 3; dr++) {
+        const ok = (r) => ![r - 1, r, r + 1, r + 2].some((x) => avoid.has(x));
+        if (ok(r0 + dr)) { r0 += dr; break; }
+        if (ok(r0 - dr)) { r0 -= dr; break; }
+      }
+      const bc = Math.round(C * d.river.bridge);
+      for (let c = 1; c < C - 1; c++)
+        for (const r of [r0, r0 + 1]) {
+          if (Math.abs(c - bc) <= 1) { this.grid[r][c] = 0; this.bridge.add(r + "," + c); }
+          else { this.grid[r][c] = 1; this.water.add(r + "," + c); this.bushes.delete(r + "," + c); }
+        }
+      // Caminos al puente desde cada lado, sin cruzar el agua
+      this._clearRadius(bc, r0 - 1, 1); this._clearRadius(bc, r0 + 2, 1);
+      const up = [{ c: 3, r: 3 }, ...this.notes.map((n) => n.tile), ...this.props.map((p) => p.tile), ...this.batteries.map((b) => this.tileAtPx(b.x, b.y))];
+      for (const t of [...up, this.exit.tile]) {
+        if (t.r < r0) this._carve(bc, r0 - 1, t.c, t.r);
+        else if (t.r > r0 + 1) this._carve(bc, r0 + 2, t.c, t.r);
+      }
+      for (const k of this.water) { const [r, c] = k.split(",").map(Number); this.grid[r][c] = 1; }
+      for (const k of this.bridge) { const [r, c] = k.split(",").map(Number); this.grid[r][c] = 0; }
+      for (const b of this.batteries) {
+        const bt = this.tileAtPx(b.x, b.y);
+        if (this.water.has(bt.r + "," + bt.c)) { const p = this.center(bc + 2, r0 - 1); b.x = p.x; b.y = p.y; this.grid[r0 - 1][bc + 2] = 0; }
+      }
+      this.riverRow = r0;
+    }
+
+    // Cabanas: se levantan al final para que ningun camino las atraviese.
+    // Ocupan 3x2 casillas; se revisan desde la puerta (abajo al centro).
+    this.propTiles = new Set();
+    for (const pr of this.props) {
+      if (pr.kind !== "cabana") continue;
+      const { c, r } = pr.tile;
+      this._clearRadius(c, r, 2);
+      for (let dr = -1; dr <= 0; dr++)
+        for (let dc = -1; dc <= 1; dc++) {
+          this.grid[r + dr][c + dc] = 1;
+          this.propTiles.add((r + dr) + "," + (c + dc));
+          this.bushes.delete((r + dr) + "," + (c + dc));
+        }
+      pr.door = this.center(c, r + 1);
+      pr.checked = false;
+      // Si una bateria quedo dentro, sale a la puerta
+      for (const b of this.batteries) {
+        const bt = this.tileAtPx(b.x, b.y);
+        if (this.propTiles.has(bt.r + "," + bt.c)) { b.x = pr.door.x + 30; b.y = pr.door.y; }
+      }
+    }
+
+    // Rastro de huellas: de la salida del jugador, por cada nota en orden, hasta la salida
+    this.trail = null; this.prints = [];
+    if (d.trail) {
+      const baliza = this.props.find((p) => p.kind === "baliza");
+      const stops = [{ c: 3, r: 3 }, ...this.notes.map((n) => n.tile), ...(baliza ? [baliza.tile] : []), this.exit.tile];
+      const pts = [this.center(3, 3)];
+      this.trailFinal = Infinity;   // desde aqui, el rastro solo se ve con la baliza prendida
+      for (let k = 0; k < stops.length - 1; k++) {
+        if (baliza && k === stops.length - 2) this.trailFinal = pts.length;
+        const seg = this.findPath(stops[k].c, stops[k].r, stops[k + 1].c, stops[k + 1].r);
+        if (seg) pts.push(...seg);
+      }
+      this.trail = pts;
+      // Huellas cada 30 px: las de Tommy (chicas, alternadas) y cada tanto una enorme
+      let carry = 0, side = 1, n = 0;
+      for (let k = 1; k < pts.length; k++) {
+        const a = pts[k - 1], b = pts[k], len = Math.hypot(b.x - a.x, b.y - a.y);
+        const ang = Math.atan2(b.y - a.y, b.x - a.x);
+        const fin = k > this.trailFinal;
+        let s = 30 - carry;
+        for (; s <= len; s += 30) {
+          const x = a.x + Math.cos(ang) * s, y = a.y + Math.sin(ang) * s;
+          side = -side; n++;
+          this.prints.push({ x: x - Math.sin(ang) * 6 * side, y: y + Math.cos(ang) * 6 * side, ang, big: false, fin });
+          if (n % 5 === 0) this.prints.push({ x: x + Math.sin(ang) * 16, y: y - Math.cos(ang) * 16, ang, big: true, fin });
+        }
+        carry = len - (s - 30);
+      }
+    }
   },
 
   _genBatteries(night) {
-    let count = night <= 1 ? 3 : 2;
+    let count = night <= 2 ? 3 : 2;
     if (typeof Difficulty !== "undefined") count += Difficulty.get().batteryBonus;
     count = Math.max(0, count);
     const fr = [[0.35, 0.7], [0.7, 0.25], [0.2, 0.35], [0.6, 0.6]];
@@ -233,34 +369,134 @@ const TDLevel = {
     return { ok: pagesLeft === 0, pagesLeft };
   },
 
-  // ================= LAS 5 NOCHES =================
+  // ================= CUARTOS (interior de las cabanas) =================
+  // Guarda el bosque al entrar y lo devuelve igual al salir.
+  _SNAP: ["cols", "rows", "grid", "tileMap", "notes", "generators", "batteries", "exit", "start", "slenderConfigs",
+    "bushes", "props", "propTiles", "trail", "prints", "ambient", "water", "bridge"],
+  snapshot() { const s = {}; for (const k of this._SNAP) s[k] = this[k]; return s; },
+  restore(s) { for (const k of this._SNAP) this[k] = s[k]; this.room = null; this.beds = []; },
+
+  ROOM: {
+    ambient: { tint: "rgba(30,30,50,0.08)", dark: 0.8 },
+    layout: [
+      "###########",
+      "#B..B..B..#",
+      "#B..B..B..#",
+      "#.........#",
+      "#.........#",
+      "#....S....#",
+      "#.........#",
+      "#####X#####",
+    ],
+  },
+  // La ultima: solo dos literas... y la marca de donde estaba la tercera
+  ROOM_LAST: {
+    ambient: { tint: "rgba(40,20,30,0.1)", dark: 0.84 },
+    layout: [
+      "###########",
+      "#B..B..e..#",
+      "#B..B..e..#",
+      "#.........#",
+      "#.........#",
+      "#....S....#",
+      "#.........#",
+      "#####X#####",
+    ],
+  },
+
+  loadRoom(room) {
+    this._loadLayout({ layout: room.layout, notes: [], items: [] });
+    this.ambient = room.ambient;
+    this.room = room;
+    this.beds = [];
+    const L = room.layout;
+    for (let r = 1; r < L.length; r++)
+      for (let c = 0; c < L[r].length; c++)
+        if (L[r][c] === "B" && L[r - 1][c] !== "B") {
+          // Se cuenta parado frente a la litera (abajo)
+          this.beds.push({ ...this.center(c, r + 2), counted: false });
+        }
+  },
+
+  // ================= MODO HISTORIA: PRÓLOGO + 5 NOCHES =================
+  totalChapters: 6,
   _defs: [
     {
-      name: "El Sendero", cols: 44, rows: 28, density: 0.045, gens: 2,
+      label: "PROLOGO", name: "La Casa", button: "ENTRAR", goal: "Busca a Tommy en la casa",
+      intro: "Martes, 11:48 p.m.\nPapa tiene turno doble en el aserradero.\nTommy deberia estar dormido.",
+      outro: "La puerta trasera estaba abierta.\nEn el lodo, unas huellas pequenas se pierden entre los pinos.\nJunto a ellas, otras. Mucho mas largas.",
+      hud: { story: true },
+      startBattery: 0,
+      ambient: { tint: "rgba(30,40,80,0.06)", dark: 0.5 },
+      layout: [
+        "TTTTTTTTTTTTTTTTTTTTTTTT",
+        "T,,,,,,,,,,,,,,,,,,,,,,T",
+        "T,,,,,,,,,,,,,,,,,,,,,,T",
+        "T###WW#####WW######WW##T",
+        "T#BB.....#M...BB#.....#T",
+        "T#BB.....#....BB#.....#T",
+        "T#.......#......#.....#T",
+        "T####.######.#####.####T",
+        "T#....................#T",
+        "T#....................#T",
+        "T####.##########.######T",
+        "T#KKK....#OOO.........#T",
+        "T#.......#........S...#T",
+        "T#F......#..MM.X......#T",
+        "T##############D#######T",
+        "TTTTTTTTTTTTTTTTTTTTTTTT",
+      ],
+      items: [{ id: "linterna", at: [4, 12], label: "La linterna de papa", amount: 100 }],
+      notes: [
+        { id: "contestadora", at: [21, 11], kind: "grabacion", voice: "pr_contestadora",
+          title: "CONTESTADORA - 1 mensaje nuevo",
+          text: "'Alex, soy papa. Me toca doble turno, llego en la manana.\nCuida a tu hermano.\nY... cierra la ventana de su cuarto, si? Aunque haga calor.\nPor favor.'" },
+        { id: "dibujo", at: [5, 5], kind: "dibujo", voice: "pr_dibujo",
+          title: "DIBUJO DE TOMMY (crayon)",
+          text: "Tommy, en el bosque, de la mano de un senor muy alto.\nEl senor no tiene cara.\nAbajo, con letra chueca:\n'mi amigo dice que el tio Daniel me espera'." },
+        { id: "caja", at: [11, 6], kind: "policial", voice: "pr_caja",
+          title: "LA CAJA DE PAPA (la que nunca abre)",
+          text: "Un recorte de periodico, amarillo:\n'WILLOW CREEK, 1971. Nino de 9 anos desaparece en el bosque.\nSu hermano mayor, de 12, fue el unico testigo.'\nEl nino se llamaba Daniel. Tenia nuestro apellido." },
+      ],
+    },
+    {
+      label: "NOCHE 1", name: "El Sendero", goal: "Sigue las huellas de Tommy", trail: true,
+      intro: "Las huellas de Tommy siguen el viejo sendero del parque.\nJunto a ellas, otras: descalzas, enormes, a tres metros una de otra.",
+      outro: "Al final del sendero, entre la niebla, una luz vieja parpadea.\nAlguien, hace mucho, tambien llego hasta aqui.",
       ambient: { tint: "rgba(40,60,90,0.05)", dark: 0.60 },
+      dormant: true,
+      outroVoice: "n1_tommy",
+      cols: 44, rows: 28, density: 0.045, gens: 0, scene: "sendero",
+      river: { bridge: 0.6 },
+      props: [{ kind: "baliza", at: [0.74, 0.7] }],
       slenders: [{ speed: 100, viewDist: 300, persistence: 0.55 }],
       notes: [
         { kind: "aviso", title: "AVISO DEL PARQUE (tachado)", text: "PROHIBIDO EL PASO PASADO EL ANOCHECER.\n\n[grabado con navaja]: 'no sirve. el no usa el sendero.'" },
+        { kind: "diario", title: "ALEX", voice: "n1_huellas", text: "Las huellas de Tommy van junto a otras, mas grandes.\nPasos de tres metros. Ningun hombre camina asi.\nY cada tanto... dejan de tocar el suelo." },
         { kind: "policial", title: "REPORTE 041-A / Willow Creek", text: "Menor: T., 9 anos. Visto por ultima vez en el km 3.\nHallado: una gorra, colgada a 2 metros.\nHuella acompanante: descalza, 47 cm. [sic]" },
-        { kind: "diario", title: "ALEX", text: "Las huellas de Tommy van junto a otras, mas grandes.\nPasos de tres metros. Ningun hombre camina asi.\nCada tanto, dejan de tocar el suelo." },
-        { kind: "grabacion", title: "GRABACION 01 (dictafono danado)", text: "'...dia catorce de busqueda... ///\n...nunca hay cuerpos, jamas hay ///\n...los perros no ladran, se sientan y miran ///\n[estatica larga]" },
-        { kind: "diario", title: "ALEX", text: "La baliza del sendero esta apagada.\nSi la enciendo vere el camino.\nPero el tambien me vera a mi.\nUna sola noche. Puedo con una noche." },
+        { kind: "grabacion", title: "DICTAFONO (guardabosques Miller)", voice: "n1_miller", text: "'...dia catorce de busqueda... ///\nnunca hay cuerpos. Nunca. ///\nlos perros no ladran... se sientan... y miran hacia arriba ///\n[estatica larga]'" },
+        { kind: "diario", title: "ALEX", voice: "n1_baliza", text: "La baliza del sendero esta apagada.\nSi la enciendo, vere el camino.\nPero el tambien me vera a mi.\nAguanta, Tommy." },
       ],
     },
     {
-      name: "El Campamento", cols: 52, rows: 32, density: 0.05, gens: 3,
+      label: "NOCHE 2", intro: "El sendero muere en un campamento de verano cerrado hace anos.\nAlguien dejo encendida la fogata.", name: "El Campamento", cols: 52, rows: 32, density: 0.05, gens: 0, scene: "campamento",
+      outro: "La fogata se apago sola.\nEn el humo, por un segundo, vi a doce ninos.\nUno traia la gorra de Tommy.",
+      outroVoice: "n2_final",
       ambient: { tint: "rgba(50,50,80,0.07)", dark: 0.62 },
+      goal: "Revisa las 4 cabanas y junta las notas",
+      props: [{ kind: "fogata", at: [0.5, 0.5] }, { kind: "cabana", at: [0.25, 0.22] }, { kind: "cabana", at: [0.75, 0.18] },
+              { kind: "cabana", at: [0.1, 0.75] }, { kind: "cabana", at: [0.55, 0.82] }],
       slenders: [{ speed: 108, viewDist: 320, persistence: 0.72 }],
       notes: [
-        { kind: "aviso", title: "CAMPAMENTO WILLOW - CERRADO 2004", text: "'Por la seguridad de nuestros campistas,\nel campamento no reabrira.'\n\n[a mano]: 'mentira. lo cerraron por los que faltan.'" },
-        { kind: "diario", title: "BITACORA - Consejera R., 1998", text: "Noche 6. Los ninos dibujan al 'hombre flaco' de los pinos.\nLes dije que no existe.\nHoy conte las literas. Falta una.\nNadie recuerda a quien pertenecia." },
+        { kind: "aviso", title: "CAMPAMENTO WILLOW - CERRADO 1989", text: "'Por la seguridad de nuestros campistas,\nel campamento no reabrira.'\n\n[a mano]: 'mentira. lo cerraron por los que faltan.'" },
+        { id: "bitacora", kind: "diario", voice: "n2_bitacora", title: "BITACORA - Consejera R., 1987", text: "Noche 6. Los ninos dibujan al 'hombre flaco' de los pinos.\nLes dije que no existe.\nHoy conte las literas. Falta una.\nY nadie recuerda de quien era." },
         { kind: "grabacion", title: "CINTA DE FOGATA (danada)", text: "'...canten mas fuerte, ninos... ///\n...si lo ven, no lo miren a la ///\n[risas de ninos] ///\n[silencio muy largo]" },
         { kind: "policial", title: "ANEXO FORENSE - 1985", text: "Tronco con 34 nombres tallados.\nCaligrafias infantiles distintas.\nUltima talla, reciente, sin herramienta: 'TOMMY'." },
-        { kind: "dibujo", title: "DIBUJO INFANTIL (sin firma)", text: "Ninos en circulo. En el centro, una figura sin cara.\nEn las esquinas: 1971 . 1985 . 1998 . 2004.\nLa figura es identica en todas.\nAbajo: 'el nos cuida ahora'." },
+        { id: "dibujo", kind: "dibujo", voice: "n2_dibujo", title: "DIBUJO INFANTIL (sin firma)", text: "Ninos en circulo. En el centro, una figura sin cara.\nEn las esquinas: 1953 . 1971 . 1985 . 1998.\nLa figura es identica en todas.\nAbajo: 'el nos cuida ahora'." },
       ],
     },
     {
-      name: "La Estacion", cols: 58, rows: 36, density: 0.055, gens: 3,
+      label: "NOCHE 3", intro: "La vieja estacion de guardabosques.\nLa radio esta muda desde hace anos. Esta noche, no.", name: "La Estacion", cols: 58, rows: 36, density: 0.055, gens: 3,
       ambient: { tint: "rgba(60,45,70,0.09)", dark: 0.64 },
       slenders: [
         { speed: 112, viewDist: 330, persistence: 0.88 },
@@ -275,7 +511,7 @@ const TDLevel = {
       ],
     },
     {
-      name: "El Claro", cols: 64, rows: 40, density: 0.06, gens: 4,
+      label: "NOCHE 4", intro: "Un claro con circulos de piedra.\nEn cada piedra, un nombre. En la ultima, el de Tommy.", name: "El Claro", cols: 64, rows: 40, density: 0.06, gens: 4,
       ambient: { tint: "rgba(80,35,45,0.11)", dark: 0.66 },
       slenders: [
         { speed: 118, viewDist: 345, persistence: 1.0 },
@@ -290,7 +526,7 @@ const TDLevel = {
       ],
     },
     {
-      name: "El Corazon", cols: 72, rows: 44, density: 0.065, gens: 4,
+      label: "NOCHE 5", intro: "El corazon del bosque.\nFalta poco para el amanecer. La puerta solo se abre una vez.", name: "El Corazon", cols: 72, rows: 44, density: 0.065, gens: 4,
       ambient: { tint: "rgba(90,20,25,0.14)", dark: 0.68 },
       slenders: [
         { speed: 126, viewDist: 360, persistence: 1.2 },

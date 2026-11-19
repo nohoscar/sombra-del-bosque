@@ -30,11 +30,26 @@ window.addEventListener("load", () => {
   // Audio por gesto
   const initAudioOnce = () => {
     Sound.init(); Sound.resume();
+    if (!startScreen.classList.contains("hidden")) Sound.menuStart();
     window.removeEventListener("pointerdown", initAudioOnce);
     window.removeEventListener("keydown", initAudioOnce);
   };
   window.addEventListener("pointerdown", initAudioOnce);
   window.addEventListener("keydown", initAudioOnce);
+  MenuScene.init(canvas);
+
+  // Paneles del menu (dificultad y controles)
+  const menuMain = document.querySelector(".menu-left");
+  const openPanel = (id) => { menuMain.classList.add("hidden"); show($(id)); };
+  const closePanels = () => { hide($("panel-diff")); hide($("panel-controls")); menuMain.classList.remove("hidden"); };
+  $("diff-open").addEventListener("click", () => openPanel("panel-diff"));
+  $("controls-open").addEventListener("click", () => openPanel("panel-controls"));
+  // Menos destellos: para quien es sensible a las luces que parpadean
+  const refreshFlash = () => { $("flash-current").textContent = Settings.lessFlash ? "MENOS" : "NORMAL"; };
+  $("flash-toggle").addEventListener("click", () => { Settings.setLessFlash(!Settings.lessFlash); refreshFlash(); });
+  refreshFlash();
+  document.querySelectorAll(".panel-back").forEach((b) => b.addEventListener("click", closePanels));
+  const backToMenu = () => { closePanels(); show(startScreen); refreshContinue(); Sound.menuStart(); };
 
   // Lectura de notas letra por letra
   let typeTimer = null, noteTyping = false, currentText = "";
@@ -54,12 +69,13 @@ window.addEventListener("load", () => {
     Difficulty.set(name);
     diffBtns.forEach((b) => b.classList.toggle("active", b.dataset.diff === name));
     diffDesc.textContent = Difficulty.get().desc;
+    $("diff-current").textContent = Difficulty.get().label;
   };
   diffBtns.forEach((b) => b.addEventListener("click", () => setDiff(b.dataset.diff)));
   setDiff("normal");
 
   // Guardado
-  const SAVE_KEY = "sombra_td_progreso";
+  const SAVE_KEY = "sombra_historia_v1";
   const loadProgress = () => {
     const v = parseInt(localStorage.getItem(SAVE_KEY) || "0", 10);
     return isNaN(v) ? 0 : Math.max(0, Math.min(v, TDLevel.totalNights - 1));
@@ -68,24 +84,24 @@ window.addEventListener("load", () => {
   const continueBtn = $("continue-btn");
   const refreshContinue = () => {
     const u = loadProgress();
-    if (u > 0) { continueBtn.textContent = `CONTINUAR (NOCHE ${u + 1})`; show(continueBtn); }
+    MenuScene.progress = u;
+    if (u > 0) { continueBtn.textContent = `CONTINUAR (${TDLevel.getInfo(u).label})`; show(continueBtn); }
     else hide(continueBtn);
   };
   refreshContinue();
 
+  // Hora que marca la cinta en cada capitulo
+  const STAMPS = ["MAR 17 NOV 1998  11:48 p.m.", "MIE 18 NOV 1998  12:31 a.m.", "MIE 18 NOV 1998  01:17 a.m.",
+    "MIE 18 NOV 1998  02:09 a.m.", "MIE 18 NOV 1998  03:33 a.m.", "MIE 18 NOV 1998  05:58 a.m."];
+
+  // Entre capitulos: narracion (si hay), luego el letrero de cinta, y el juego entra desde negro
   function showNightIntro(i) {
     const info = TDLevel.getInfo(i);
-    nightLabel.textContent = `NOCHE ${info.num} DE ${TDLevel.totalNights}`;
-    nightTitle.textContent = info.name;
-    nightText.textContent = info.intro;
-    nightBtn.textContent = info.num === 1 ? "ENTRAR AL BOSQUE" : "CONTINUAR";
-    show(nightScreen);
-    nightBtn.onclick = () => {
-      hide(nightScreen);
-      const inter = Cinematic.INTERLUDES[i];
-      if (inter) Cinematic.play(inter, () => game.beginNight(i));
-      else game.beginNight(i);
-    };
+    const card = Cinematic.titleCard({
+      label: info.num === 0 ? "PROLOGO" : `NOCHE ${info.num} DE ${TDLevel.totalNights - 1}`,
+      title: info.name, text: info.intro || "", stamp: STAMPS[i] || "", hold: 6,
+    });
+    Cinematic.play([...(Cinematic.INTERLUDES[i] || []), ...card], () => game.beginNight(i));
   }
 
   // Eventos del juego
@@ -96,20 +112,23 @@ window.addEventListener("load", () => {
     currentText = doc.text;
     show(noteScreen);
     typeNote(noteText, doc.text);
-    Sound.startReading();
+    if (doc.voice && Sound.hasVoice(doc.voice)) Sound.playVoice(doc.voice);
+    else Sound.startReading();
   });
   game.on("nightcomplete", (d) => {
     saveProgress(d.completed);
-    nightLabel.textContent = "SOBREVIVISTE";
-    nightTitle.textContent = `Noche ${d.completed} superada`;
-    nightText.textContent = "El sol asoma un instante entre los arboles y vuelve a ocultarse.\nOtra noche cae. El bosque despierta, mas hambriento que antes.";
-    nightBtn.textContent = "SIGUIENTE NOCHE";
-    show(nightScreen);
-    nightBtn.onclick = () => { hide(nightScreen); showNightIntro(d.completed); };
+    const done = TDLevel.getInfo(d.completed - 1);
+    const card = Cinematic.titleCard({
+      label: d.completed === 1 ? "PROLOGO" : "SOBREVIVISTE",
+      title: d.completed === 1 ? "Tommy no esta" : `${done.label} superada`,
+      text: done.outro || "", stamp: "", hold: 6,
+      voice: TDLevel._defs[d.completed - 1].outroVoice,
+    });
+    Cinematic.play(card, () => showNightIntro(d.completed));
   });
   game.on("gameover", (d) => {
     Cinematic.play(Cinematic.DEATH, () => {
-      gameoverText.textContent = `Caiste en la Noche ${d.night}. El bosque te reclamo, como a los demas.`;
+      gameoverText.textContent = `Caiste en ${TDLevel.getInfo(d.night - 1).label}. El bosque te reclamo, como a los demas.`;
       show(gameoverScreen);
     });
   });
@@ -118,10 +137,11 @@ window.addEventListener("load", () => {
   });
 
   // Botones
-  $("start-btn").addEventListener("click", () => { hide(startScreen); Cinematic.play(Cinematic.OPENING, () => showNightIntro(0)); });
-  continueBtn.addEventListener("click", () => { hide(startScreen); showNightIntro(loadProgress()); });
+  $("start-btn").addEventListener("click", () => { hide(startScreen); Sound.menuStop(); game.clearCheckpoint(); Cinematic.play(Cinematic.OPENING, () => showNightIntro(0)); });
+  continueBtn.addEventListener("click", () => { hide(startScreen); Sound.menuStop(); showNightIntro(loadProgress()); });
   $("retry-btn").addEventListener("click", () => { hide(gameoverScreen); game.retry(); });
-  $("win-btn").addEventListener("click", () => { hide(winScreen); refreshContinue(); show(startScreen); });
+  nightBtn.addEventListener("click", () => Sound.stopVoice());
+  $("win-btn").addEventListener("click", () => { hide(winScreen); game.state = "menu"; backToMenu(); });
   $("note-btn").addEventListener("click", () => {
     if (noteTyping) { clearInterval(typeTimer); noteText.textContent = currentText; noteTyping = false; return; }
     hide(noteScreen); Sound.stopReading(); game.resumeFromNote();
@@ -135,8 +155,12 @@ window.addEventListener("load", () => {
   $("restart-night-btn").addEventListener("click", () => { hide(pauseScreen); game.retry(); });
   $("mute-btn").addEventListener("click", () => Sound.toggleMute());
   $("tomenu-btn").addEventListener("click", () => {
-    hide(pauseScreen); Sound.stopAmbience(); game.state = "menu"; show(startScreen); refreshContinue();
+    hide(pauseScreen); Sound.stopAmbience(); game.state = "menu"; backToMenu();
   });
+
+  // Si cambias de pestana o llega una llamada, el juego se pausa solo
+  document.addEventListener("visibilitychange", () => { if (document.hidden) doPause(); });
+  window.addEventListener("blur", () => doPause());
 
   window.addEventListener("keydown", (e) => {
     if (Cinematic.active && e.code === "Escape") { Cinematic.skipAll(); return; }
@@ -187,9 +211,43 @@ window.addEventListener("load", () => {
     if (dt > 0.05) dt = 0.05;
     Input.update();
     if (Cinematic.active) { Cinematic.update(dt); Cinematic.draw(ctx, canvas.width, canvas.height); }
-    else { game.update(dt); game.draw(); }
+    else {
+      game.update(dt); game.draw();
+      if (game.state === "menu") { MenuScene.update(dt); MenuScene.draw(ctx); }
+    }
     pauseBtn.classList.toggle("on", game.state === "playing" && !game.paused && !Cinematic.active);
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+
+  // Para probar: abrir con #prueba-1 empieza directo en esa noche (0 = prologo).
+  // #prueba-cabana entra a la ultima cabana; #prueba-esbelto lo pone frente a tu linterna;
+  // #prueba-letrero muestra el letrero de la Noche 2.
+  const h = location.hash || "";
+  const m = /^#prueba-(\d)$/.exec(h);
+  if (m) { hide(startScreen); game.beginNight(Math.min(+m[1], TDLevel.totalNights - 1)); }
+  if (h === "#prueba-cabana") {
+    hide(startScreen); game.beginNight(2);
+    const cabs = TDLevel.props.filter((q) => q.kind === "cabana");
+    cabs.slice(0, 3).forEach((q) => (q.checked = true));
+    game.enterRoom(cabs[3]); game.player.flashlight = true; game.fadeIn = 0;
+  }
+  if (h === "#prueba-esbelto") {
+    hide(startScreen); game.beginNight(3); game.fadeIn = 0;
+    const p = game.player, s = game.slenders[0];
+    p.flashlight = true; p.fx = 1; p.fy = 0;
+    for (let d = 200; d > 90; d -= 10) if (!TDLevel.circleHitsWall(p.x + d, p.y, 14)) { s.x = p.x + d; s.y = p.y; break; }
+    s.state = "chase"; s.blinkCd = 999; s.stunCd = 999; s.speed = 0; s.vis = 1; game.faceCd = 999;
+  }
+  if (h === "#prueba-rio") {
+    hide(startScreen); game.beginNight(1); game.fadeIn = 0;
+    const [r, c] = [...TDLevel.bridge][0].split(",").map(Number);
+    const pt = TDLevel.center(c + 1, r - 2);
+    game.player.x = pt.x; game.player.y = pt.y; game.player.flashlight = true; game.player.fx = 0; game.player.fy = 1;
+    game._camera(true);
+  }
+  if (h === "#prueba-letrero") {
+    hide(startScreen);
+    Cinematic.play(Cinematic.titleCard({ label: "NOCHE 2 DE 5", title: "El Campamento", text: TDLevel._defs[2].intro, stamp: STAMPS[2] }), () => {});
+  }
 });

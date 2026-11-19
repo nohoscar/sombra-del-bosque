@@ -21,16 +21,24 @@
       <div id="btn-run" class="touch-btn">CORRER</div>
     </div>
 
-    <!-- Inicio -->
-    <div id="start-screen" class="overlay">
-      <p class="subtitle">SOMBRA DEL BOSQUE</p>
-      <h1>LAS 8 NOCHES</h1>
-      <p class="story">
-        Tu hermano Tommy desapareci&oacute; en el bosque de Willow Creek.
-        Entra a buscarlo, re&uacute;ne las notas y escapa cada noche...
-        evitando al Esbelto.
-      </p>
-      <div class="difficulty-select">
+    <!-- Inicio: el bosque vivo se dibuja en el canvas, detras de este menu -->
+    <div id="start-screen" class="overlay menu">
+      <div class="menu-left">
+        <p class="menu-kicker">WILLOW CREEK &middot; 1998</p>
+        <h1 class="menu-title"><span>SOMBRA</span><span>DEL BOSQUE</span></h1>
+        <p class="menu-tag">Tommy tiene 9 a&ntilde;os. Desapareci&oacute; a medianoche.<br>No es el primero de tu familia.</p>
+        <nav class="menu-list" id="menu-main">
+          <button id="continue-btn" class="menu-item hidden">CONTINUAR</button>
+          <button id="start-btn" class="menu-item">NUEVA PARTIDA</button>
+          <button id="diff-open" class="menu-item">DIFICULTAD <span id="diff-current" class="menu-value">NORMAL</span></button>
+          <button id="controls-open" class="menu-item">CONTROLES</button>
+          <button id="flash-toggle" class="menu-item">DESTELLOS <span id="flash-current" class="menu-value">NORMAL</span></button>
+        </nav>
+        <p class="menu-foot">Usa aud&iacute;fonos &nbsp;&middot;&nbsp; El mouse es tu linterna</p>
+        <p class="menu-foot menu-warn">Aviso: luces que parpadean y sustos con destellos.</p>
+      </div>
+
+      <div id="panel-diff" class="menu-panel hidden">
         <p class="diff-title">DIFICULTAD</p>
         <div class="diff-options">
           <button class="diff-btn" data-diff="facil">F&Aacute;CIL</button>
@@ -38,18 +46,20 @@
           <button class="diff-btn" data-diff="dificil">DIF&Iacute;CIL</button>
         </div>
         <p class="diff-desc" id="diff-desc"></p>
+        <button class="panel-back">VOLVER</button>
       </div>
-      <div class="controls-help">
-        <p><b>WASD / Flechas</b> &mdash; Moverse</p>
-        <p><b>SHIFT</b> &mdash; Correr</p>
-        <p><b>F</b> &mdash; Linterna</p>
-        <p><b>E</b> &mdash; Examinar / foco / salida</p>
-        <p><b>Arbustos</b> &mdash; Esconderse</p>
-        <p><b>P / ESC</b> &mdash; Pausa &nbsp;&middot;&nbsp; <b>M</b> Silenciar</p>
-      </div>
-      <div class="btn-row">
-        <button id="continue-btn" class="hidden">CONTINUAR</button>
-        <button id="start-btn">NUEVA PARTIDA</button>
+
+      <div id="panel-controls" class="menu-panel hidden">
+        <p class="diff-title">CONTROLES</p>
+        <div class="controls-help">
+          <p><b>WASD / Flechas</b> &mdash; Moverse</p>
+          <p><b>SHIFT</b> &mdash; Correr</p>
+          <p><b>F</b> &mdash; Linterna</p>
+          <p><b>E</b> &mdash; Examinar / foco / salida</p>
+          <p><b>Arbustos</b> &mdash; Esconderse</p>
+          <p><b>P / ESC</b> &mdash; Pausa &nbsp;&middot;&nbsp; <b>M</b> Silenciar</p>
+        </div>
+        <button class="panel-back">VOLVER</button>
       </div>
     </div>
 
@@ -100,9 +110,11 @@
   <script src="js/difficulty.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/cinematic.js"></script>
+  <script src="js/menu.js"></script>
   <script src="js/td/level.js"></script>
   <script src="js/td/player.js"></script>
   <script src="js/td/slender.js"></script>
+  <script src="js/td/story.js"></script>
   <script src="js/td/game.js"></script>
   <script src="js/td/main.js"></script>
 </body>

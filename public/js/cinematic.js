@@ -26,6 +26,7 @@ const Cinematic = {
   skipAll() {
     if (!this.active) return;
     this.active = false;
+    if (typeof Sound !== "undefined") Sound.stopVoice();
     const cb = this.onDone;
     this.onDone = null;
     if (cb) cb();
@@ -38,14 +39,22 @@ const Cinematic = {
 
     if (this.phase === "in") {
       this.fade = 1 - Math.min(1, this.t / IN);
-      if (this.t >= IN) { this.phase = "hold"; this.t = 0; }
+      if (this.t >= IN) {
+        this.phase = "hold"; this.t = 0;
+        const sc = this.scenes[this.index];
+        this._voiceDur = 0;
+        if (sc && sc.voice && typeof Sound !== "undefined") this._voiceDur = Sound.playVoice(sc.voice) || 0;
+        if (sc && sc.theme && typeof Sound !== "undefined") Sound.theme(sc.theme === "roto");
+        if (sc && sc.hit && typeof Sound !== "undefined") Sound.hit();
+        if (sc && sc.sfx === "glitch" && typeof Sound !== "undefined") Sound.glitchBurst();
+      }
     } else if (this.phase === "hold") {
       this.fade = 0;
       const scene = this.scenes[this.index];
-      const maxHold = (scene && scene.hold) ? scene.hold : MAXHOLD;
+      const maxHold = Math.max((scene && scene.hold) ? scene.hold : MAXHOLD, (this._voiceDur || 0) + 1.2);
       const canSkip = this.t > 0.35;
       const pressed = this._advance || Input.wasPressed("jump") || Input.wasPressed("interact");
-      if (pressed && canSkip) { this.phase = "out"; this.t = 0; }
+      if (pressed && canSkip) { this.phase = "out"; this.t = 0; if (typeof Sound !== "undefined") Sound.stopVoice(); }
       else if (this.t > maxHold) { this.phase = "out"; this.t = 0; }
       this._advance = false;
     } else if (this.phase === "out") {
@@ -202,7 +211,8 @@ const Cinematic = {
 // ---------------- Escena de apertura ----------------
 Cinematic.OPENING = [
   {
-    caption: "Otro dia agotador en el pueblo de Willow Creek.\nSolo quieres llegar a casa y dormir.",
+    caption: "Papa tenia turno doble esa noche.\nMe tocaba cuidar a Tommy. Como siempre.",
+    voice: "op_1",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#12142a", "#243049");
       Cinematic._stars(ctx, W, H, 60, t);
@@ -250,7 +260,8 @@ Cinematic.OPENING = [
     },
   },
   {
-    caption: "Pero al voltear hacia el bosque...\nalgo alto y quieto te devuelve la mirada.",
+    caption: "Al pasar junto al bosque, senti que algo me miraba.\nAlgo alto. Quieto.",
+    voice: "op_2",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#0f1124", "#1d2338");
       Cinematic._stars(ctx, W, H, 50, t);
@@ -270,7 +281,8 @@ Cinematic.OPENING = [
     },
   },
   {
-    caption: "En casa, la puerta del cuarto de Tommy esta abierta.\nSu cama, vacia. La ventana, de par en par.",
+    caption: "Cuando llegue, la casa estaba a oscuras.\nY la ventana del cuarto de Tommy, abierta de par en par.",
+    voice: "op_3",
     draw(ctx, t, W, H) {
       // Interior del cuarto, luz de luna azul
       Cinematic._sky(ctx, W, H, "#161a2e", "#0e1120");
@@ -318,8 +330,36 @@ Cinematic.OPENING = [
       ctx.fillRect(W * 0.42, H - 170, 26, 30);
     },
   },
+];
+
+// ---------------- Helpers extra ----------------
+Cinematic._stoneCircle = function (ctx, cx, y, rx, names) {
+  ctx.strokeStyle = "#3a3540";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.ellipse(cx, y, rx, rx * 0.35, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  // piedras verticales alrededor
+  const n = 7;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const sx = cx + Math.cos(a) * rx;
+    const sy = y + Math.sin(a) * rx * 0.35;
+    ctx.fillStyle = "#413b47";
+    ctx.fillRect(sx - 4, sy - 16, 8, 16);
+    ctx.fillStyle = "#2a2530";
+    ctx.fillRect(sx - 2, sy - 12, 4, 10);
+  }
+};
+
+// ---------------- Interludios entre noches (índice = noche que empieza) ----------------
+Cinematic.INTERLUDES = {
+  // Antes de la Noche 1
+  1: [
   {
-    caption: "No puedes quedarte esperando.\nTomas una linterna y entras al bosque a buscarlo.",
+    caption: "Segui sus huellas hasta donde empiezan los pinos.\nNo le avise a nadie. Quien me iba a creer.",
+    voice: "in_1",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#0c0e1c", "#181c2c");
       Cinematic._stars(ctx, W, H, 40, t);
@@ -347,33 +387,9 @@ Cinematic.OPENING = [
       ctx.fill();
     },
   },
-];
-
-// ---------------- Helpers extra ----------------
-Cinematic._stoneCircle = function (ctx, cx, y, rx, names) {
-  ctx.strokeStyle = "#3a3540";
-  ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.ellipse(cx, y, rx, rx * 0.35, 0, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.lineWidth = 1;
-  // piedras verticales alrededor
-  const n = 7;
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2;
-    const sx = cx + Math.cos(a) * rx;
-    const sy = y + Math.sin(a) * rx * 0.35;
-    ctx.fillStyle = "#413b47";
-    ctx.fillRect(sx - 4, sy - 16, 8, 16);
-    ctx.fillStyle = "#2a2530";
-    ctx.fillRect(sx - 2, sy - 12, 4, 10);
-  }
-};
-
-// ---------------- Interludios entre noches (índice = noche que empieza) ----------------
-Cinematic.INTERLUDES = {
+  ],
   // Antes de la Noche 2
-  1: [{
+  2: [{
     caption: "El sendero muere en un campamento de verano abandonado.\nUn arco podrido: 'CAMPAMENTO WILLOW'. Cerrado hace decadas.",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#0f1124", "#1b2036");
@@ -414,7 +430,7 @@ Cinematic.INTERLUDES = {
     },
   }],
   // Antes de la Noche 3
-  2: [{
+  3: [{
     caption: "Entre los pinos aparece la vieja estacion de guardabosques.\nVentanas rotas. La radio, muda desde hace anos.",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#0e1022", "#1a1e34");
@@ -456,7 +472,7 @@ Cinematic.INTERLUDES = {
     },
   }],
   // Antes de la Noche 4
-  3: [{
+  4: [{
     caption: "Un claro con circulos de piedra.\nNombres de ninos tallados. El ultimo dice: TOMMY.",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#14122a", "#241a2c");
@@ -472,7 +488,7 @@ Cinematic.INTERLUDES = {
     },
   }],
   // Antes de la Noche 5
-  4: [{
+  5: [{
     caption: "Tres sombras te siguen ahora.\n'No mires atras, hermano', susurra Tommy. 'Corre'.",
     draw(ctx, t, W, H) {
       Cinematic._sky(ctx, W, H, "#1a0e18", "#2a1216");
@@ -548,38 +564,113 @@ Cinematic.ENDING = [
   },
 ];
 
-// ---------------- Ser atrapado (breve) ----------------
+// ---------------- Cara del Esbelto (susto y muerte) ----------------
+// Cabeza enorme, alargada y sin rostro: solo dos sombras hundidas donde irian los ojos.
+Cinematic._slenderFace = function (ctx, W, H, scale, tilt, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha ?? 1;
+  ctx.translate(W / 2, H * 0.55);
+  ctx.rotate(tilt || 0);
+  ctx.scale(scale, scale);
+  // Hombros y cuello del traje
+  ctx.fillStyle = "#0c0c10";
+  ctx.beginPath(); ctx.moveTo(-260, 420); ctx.lineTo(-150, 210); ctx.lineTo(150, 210); ctx.lineTo(260, 420); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#d9d9de"; ctx.beginPath(); ctx.moveTo(-34, 210); ctx.lineTo(34, 210); ctx.lineTo(0, 330); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#5a1010"; ctx.beginPath(); ctx.moveTo(-8, 214); ctx.lineTo(8, 214); ctx.lineTo(4, 320); ctx.lineTo(-4, 320); ctx.closePath(); ctx.fill();
+  // Cara
+  const g = ctx.createRadialGradient(-30, -60, 20, 0, 0, 230);
+  g.addColorStop(0, "#f2f2f4"); g.addColorStop(0.6, "#d6d7dc"); g.addColorStop(1, "#8d8f98");
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.ellipse(0, 0, 120, 200, 0, 0, Math.PI * 2); ctx.fill();
+  // Hundimientos donde deberian estar los ojos y la boca
+  ctx.fillStyle = "rgba(70,70,82,0.35)";
+  ctx.beginPath(); ctx.ellipse(-44, -30, 26, 34, 0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(44, -30, 26, 34, -0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(70,70,82,0.18)";
+  ctx.beginPath(); ctx.ellipse(0, 90, 38, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // Estatica encima
+  for (let i = 0; i < 14; i++) {
+    const y = Math.random() * H, h = 2 + Math.random() * 10;
+    ctx.fillStyle = `rgba(${200 + Math.random() * 55 | 0},${200 + Math.random() * 55 | 0},${210 + Math.random() * 45 | 0},${0.08 + Math.random() * 0.15})`;
+    ctx.fillRect(0, y, W, h);
+  }
+};
+
+// ---------------- Ser atrapado ----------------
+// Se agacha hacia la camara, todo se vuelve estatica... y luego silencio total.
 Cinematic.DEATH = [
   {
     caption: "",
-    hold: 1.6,
+    hold: 2.6,
     draw(ctx, t, W, H) {
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, W, H);
-      // rostro pálido acercándose de golpe
-      const s = Math.min(1, t / 0.5);
-      const r = 40 + s * 260;
-      ctx.fillStyle = "#e9e9ec";
-      ctx.beginPath();
-      ctx.ellipse(W / 2, H / 2, r * 0.72, r, 0, 0, Math.PI * 2);
-      ctx.fill();
-      // tentáculos irrumpiendo
-      ctx.strokeStyle = "#0a0a0d";
-      ctx.lineWidth = 6;
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        const jitter = Math.sin(t * 30 + i) * 20;
-        ctx.beginPath();
-        ctx.moveTo(W / 2, H / 2);
-        ctx.lineTo(W / 2 + Math.cos(a) * (r + 120 + jitter), H / 2 + Math.sin(a) * (r + 120 + jitter));
-        ctx.stroke();
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+      if (t < 1.4) {
+        const k = Math.min(1, t / 1.2);
+        Cinematic._slenderFace(ctx, W, H, 0.45 + k * k * 1.4, 0.15 + k * 0.35, Math.min(1, t * 3));
+        if (t > 0.9) {   // la imagen se rompe
+          const r = (t - 0.9) / 0.5;
+          for (let i = 0; i < 40 * r; i++) {
+            const v = Math.random() * 255 | 0;
+            ctx.fillStyle = `rgba(${v},${v},${v},0.85)`;
+            ctx.fillRect(Math.random() * W, Math.random() * H, 30 + Math.random() * 300, 2 + Math.random() * 8);
+          }
+        }
       }
-      ctx.lineWidth = 1;
-      // flash rojo
-      if (t < 0.3) {
-        ctx.fillStyle = `rgba(150,0,0,${0.6 - t})`;
-        ctx.fillRect(0, 0, W, H);
-      }
+      // Despues: negro y silencio
     },
   },
 ];
+
+// ---------------- Letrero de cinta entre capitulos ----------------
+// Estatica, sello de la cinta ("NOCHE 2 · 01:17 a.m."), titulo letra por letra y la voz de Alex.
+Cinematic.titleCard = function (o) {
+  return [{
+    caption: "",
+    hold: o.hold || 7,
+    voice: o.voice,
+    sfx: "glitch",
+    draw(ctx, t0, W, H, phase) {
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+      if (phase === "in") return;
+      const t = phase === "out" ? 99 : t0;
+      // Golpe de estatica al entrar
+      if (phase === "hold" && t < 0.45 && !(typeof Settings !== "undefined" && Settings.lessFlash)) {
+        for (let i = 0; i < 260; i++) {
+          const v = Math.random() * 255 | 0;
+          ctx.fillStyle = `rgba(${v},${v},${v},${0.9 - t * 2})`;
+          ctx.fillRect(Math.random() * W, Math.random() * H, 4 + Math.random() * 60, 2 + Math.random() * 4);
+        }
+      }
+      // Sello de la cinta
+      ctx.font = "16px Consolas, 'Courier New', monospace"; ctx.textAlign = "left";
+      ctx.fillStyle = "#c9cfd6";
+      ctx.fillText("\u25B6 PLAY", 40, 96);
+      if (Math.floor(t * 1.6) % 2 === 0) { ctx.fillStyle = "#c22"; ctx.beginPath(); ctx.arc(W - 106, 90, 6, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = "#c9cfd6"; ctx.textAlign = "right"; ctx.fillText("REC", W - 40, 96);
+      ctx.textAlign = "left"; ctx.fillText(o.stamp || "", 40, H - 84);
+      // Titulo letra por letra
+      const shown = Math.min(o.title.length, Math.floor(Math.max(0, t - 0.5) * 14));
+      ctx.font = "48px Georgia, 'Times New Roman', serif"; ctx.textAlign = "center";
+      ctx.fillStyle = "#e6e2d8";
+      const jx = Math.random() < 0.04 ? (Math.random() - 0.5) * 8 : 0;
+      ctx.fillText(o.title.slice(0, shown), W / 2 + jx, H * 0.45);
+      if (o.label) {
+        ctx.font = "13px Georgia, serif"; ctx.fillStyle = "#8d939b";
+        ctx.fillText(o.label.split("").join(" "), W / 2, H * 0.45 - 62);
+      }
+      // Texto debajo, aparece despues del titulo
+      const a = Math.max(0, Math.min(1, (t - 0.6 - o.title.length / 14) * 1.2));
+      if (a > 0 && o.text) {
+        ctx.globalAlpha = a; ctx.font = "italic 18px Georgia, serif"; ctx.fillStyle = "#b7bcc3";
+        o.text.split("\n").forEach((ln, i) => ctx.fillText(ln, W / 2, H * 0.45 + 50 + i * 28));
+        ctx.globalAlpha = 1;
+      }
+      ctx.textAlign = "left";
+      // Lineas de cinta
+      ctx.fillStyle = "rgba(255,255,255,0.025)";
+      for (let y = (t * 40) % 4; y < H; y += 4) ctx.fillRect(0, y, W, 1);
+    },
+  }];
+};
+

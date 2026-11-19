@@ -44,7 +44,7 @@ class TDPlayer {
       if (this.glitchKind === 0) { ix = -ix; iy = -iy; }      // control invertido
       else if (this.glitchKind === 1) { ix = 0; iy = 0; }     // tropiezo
       else { ix += (Math.random() - 0.5) * 1.5; iy += (Math.random() - 0.5) * 1.5; }
-    } else if (this.corruption > 0.35 && Math.random() < this.corruption * 0.05) {
+    } else if (this.corruption > 0.35 && Math.random() < this.corruption * 3 * dt) {
       this.glitchTimer = 0.18 + Math.random() * 0.22;
       this.glitchKind = Math.floor(Math.random() * 3);
     }
@@ -66,7 +66,7 @@ class TDPlayer {
     if (Input.wasPressed("flashlight") && (this.battery > 0 || this.flashlight)) this.flashlight = !this.flashlight;
     if (this.flashlight) {
       const drain = (typeof Difficulty !== "undefined") ? Difficulty.get().batteryDrain : 1;
-      this.battery = Math.max(0, this.battery - 5 * drain * dt);
+      this.battery = Math.max(0, this.battery - 3 * drain * dt);
       if (this.battery <= 0) this.flashlight = false;
     }
 
@@ -134,6 +134,16 @@ class TDPlayer {
     // Ojo/mirada hacia el lado
     ctx.fillStyle = "#1a1a1a";
     ctx.fillRect(x + (s > 0 ? 2 : -4), y - 22, 2, 2);
+
+    // La linterna en la mano, apuntando a donde mira
+    if (this.battery > 0 || this.flashlight) {
+      const hx = x + (s > 0 ? 10 : -10), hy = y - 2;
+      const a = Math.atan2(this.fy, this.fx);
+      ctx.save(); ctx.translate(hx, hy); ctx.rotate(a);
+      ctx.fillStyle = "#2a2a30"; ctx.fillRect(-2, -2, 11, 4);
+      ctx.fillStyle = this.flashlight ? "#ffe9a8" : "#7a6a40"; ctx.fillRect(8, -3, 3, 6);
+      ctx.restore();
+    }
 
     ctx.restore();
   }
