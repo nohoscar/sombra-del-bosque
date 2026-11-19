@@ -161,6 +161,7 @@ const TDLevel = {
     this.name = d.name; this.intro = d.intro;
     this.label = d.label;
     this.def = d;
+    this.room = null; this.beds = [];
     this.ambient = d.ambient;
     this.tileMap = null;
     if (d.layout) { this._loadLayout(d); return; }
@@ -326,6 +327,55 @@ const TDLevel = {
   canExit() {
     const pagesLeft = this.notes.filter((n) => !n.collected).length;
     return { ok: pagesLeft === 0, pagesLeft };
+  },
+
+  // ================= CUARTOS (interior de las cabanas) =================
+  // Guarda el bosque al entrar y lo devuelve igual al salir.
+  _SNAP: ["cols", "rows", "grid", "tileMap", "notes", "generators", "batteries", "exit", "start", "slenderConfigs",
+    "bushes", "props", "propTiles", "trail", "prints", "ambient"],
+  snapshot() { const s = {}; for (const k of this._SNAP) s[k] = this[k]; return s; },
+  restore(s) { for (const k of this._SNAP) this[k] = s[k]; this.room = null; this.beds = []; },
+
+  ROOM: {
+    ambient: { tint: "rgba(30,30,50,0.08)", dark: 0.8 },
+    layout: [
+      "###########",
+      "#B..B..B..#",
+      "#B..B..B..#",
+      "#.........#",
+      "#.........#",
+      "#....S....#",
+      "#.........#",
+      "#####X#####",
+    ],
+  },
+  // La ultima: solo dos literas... y la marca de donde estaba la tercera
+  ROOM_LAST: {
+    ambient: { tint: "rgba(40,20,30,0.1)", dark: 0.84 },
+    layout: [
+      "###########",
+      "#B..B..e..#",
+      "#B..B..e..#",
+      "#.........#",
+      "#.........#",
+      "#....S....#",
+      "#.........#",
+      "#####X#####",
+    ],
+  },
+
+  loadRoom(room) {
+    this._loadLayout({ layout: room.layout, notes: [], items: [] });
+    this.ambient = room.ambient;
+    this.room = room;
+    this.beds = [];
+    const L = room.layout;
+    for (let r = 1; r < L.length; r++)
+      for (let c = 0; c < L[r].length; c++)
+        if (L[r][c] === "B" && L[r - 1][c] !== "B") {
+          // Se cuenta parado frente a la litera (abajo)
+          this.beds.push({ ...this.center(c, r + 2), counted: false });
+        }
   },
 
   // ================= MODO HISTORIA: PRÓLOGO + 5 NOCHES =================

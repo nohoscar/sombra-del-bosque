@@ -159,7 +159,7 @@ const Story = {
           S.after(0.8, () => g.say("'Canten mas fuerte, ninos... Si lo ven... no lo miren a la cara.'", 6, "n2_cinta"));
         }
         // Al juntar 3 pistas, alguien te llama con la voz de Tommy
-        if (S.flags.llamar && !S.flags.llamado && g.state === "playing") {
+        if (S.flags.llamar && !S.flags.llamado && g.state === "playing" && !TDLevel.room) {
           S.flags.llamado = true;
           Sound.silence(1.2);
           S.after(1.2, () => {
@@ -184,20 +184,25 @@ const Story = {
         if (got >= 3) S.flags.llamar = true;
       },
       onProp(g, S, pr) {
-        const cabs = TDLevel.props.filter((q) => q.kind === "cabana");
-        const n = cabs.filter((q) => q.checked).length;
+        const cabs = TDLevel.props.length ? TDLevel.props : g._outside.lvl.props;
+        const n = cabs.filter((q) => q.kind === "cabana" && q.checked).length;
         if (n < 4) { g.say(["Tres literas.", "Seis.", "Nueve."][n - 1], 2.5, "n2_cab" + n); return; }
-        // La ultima cabana: la cuenta no cuadra... y algo esta adentro
+        // La ultima cabana: la cuenta no cuadra... la puerta se cierra y algo esta en la esquina
         g.say("Once. Solo once camas... y en la lista hay doce nombres.", 5, "n2_literas");
-        S.after(4.5, () => {
-          Sound.silence(0.9);
-          S.after(0.9, () => {
-            g.appear(pr.x, pr.y - TDLevel.TILE * 0.2, 2.0);
-            g.flickerLight(2.0); g.static = Math.min(100, g.static + 34); Sound.hit();
+        S.after(4.2, () => {
+          Sound.silence(1.0);
+          S.after(1.0, () => {
+            Sound.hit();
+            g.flickerLight(2.6);
+            g.static = Math.min(100, g.static + 36);
+            const T = TDLevel.TILE;
+            g.spawnInRoom(7.5 * T, 1.6 * T);   // donde faltaba la litera
+            g.hint("Sal de la cabana. Ya.", 3);
           });
         });
       },
       goal(g) {
+        if (TDLevel.room) return `Cuenta las literas (${TDLevel.beds.filter((b) => b.counted).length}/${TDLevel.beds.length})`;
         const cabs = TDLevel.props.filter((q) => q.kind === "cabana");
         const left = cabs.filter((q) => !q.checked).length;
         const notes = TDLevel.notes.filter((n) => !n.collected).length;

@@ -46,6 +46,7 @@ const Cinematic = {
         if (sc && sc.voice && typeof Sound !== "undefined") this._voiceDur = Sound.playVoice(sc.voice) || 0;
         if (sc && sc.theme && typeof Sound !== "undefined") Sound.theme(sc.theme === "roto");
         if (sc && sc.hit && typeof Sound !== "undefined") Sound.hit();
+        if (sc && sc.sfx === "glitch" && typeof Sound !== "undefined") Sound.glitchBurst();
       }
     } else if (this.phase === "hold") {
       this.fade = 0;
@@ -563,38 +564,113 @@ Cinematic.ENDING = [
   },
 ];
 
-// ---------------- Ser atrapado (breve) ----------------
+// ---------------- Cara del Esbelto (susto y muerte) ----------------
+// Cabeza enorme, alargada y sin rostro: solo dos sombras hundidas donde irian los ojos.
+Cinematic._slenderFace = function (ctx, W, H, scale, tilt, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha ?? 1;
+  ctx.translate(W / 2, H * 0.55);
+  ctx.rotate(tilt || 0);
+  ctx.scale(scale, scale);
+  // Hombros y cuello del traje
+  ctx.fillStyle = "#0c0c10";
+  ctx.beginPath(); ctx.moveTo(-260, 420); ctx.lineTo(-150, 210); ctx.lineTo(150, 210); ctx.lineTo(260, 420); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#d9d9de"; ctx.beginPath(); ctx.moveTo(-34, 210); ctx.lineTo(34, 210); ctx.lineTo(0, 330); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#5a1010"; ctx.beginPath(); ctx.moveTo(-8, 214); ctx.lineTo(8, 214); ctx.lineTo(4, 320); ctx.lineTo(-4, 320); ctx.closePath(); ctx.fill();
+  // Cara
+  const g = ctx.createRadialGradient(-30, -60, 20, 0, 0, 230);
+  g.addColorStop(0, "#f2f2f4"); g.addColorStop(0.6, "#d6d7dc"); g.addColorStop(1, "#8d8f98");
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.ellipse(0, 0, 120, 200, 0, 0, Math.PI * 2); ctx.fill();
+  // Hundimientos donde deberian estar los ojos y la boca
+  ctx.fillStyle = "rgba(70,70,82,0.35)";
+  ctx.beginPath(); ctx.ellipse(-44, -30, 26, 34, 0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(44, -30, 26, 34, -0.1, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(70,70,82,0.18)";
+  ctx.beginPath(); ctx.ellipse(0, 90, 38, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // Estatica encima
+  for (let i = 0; i < 14; i++) {
+    const y = Math.random() * H, h = 2 + Math.random() * 10;
+    ctx.fillStyle = `rgba(${200 + Math.random() * 55 | 0},${200 + Math.random() * 55 | 0},${210 + Math.random() * 45 | 0},${0.08 + Math.random() * 0.15})`;
+    ctx.fillRect(0, y, W, h);
+  }
+};
+
+// ---------------- Ser atrapado ----------------
+// Se agacha hacia la camara, todo se vuelve estatica... y luego silencio total.
 Cinematic.DEATH = [
   {
     caption: "",
-    hold: 1.6,
+    hold: 2.6,
     draw(ctx, t, W, H) {
-      ctx.fillStyle = "#000";
-      ctx.fillRect(0, 0, W, H);
-      // rostro pálido acercándose de golpe
-      const s = Math.min(1, t / 0.5);
-      const r = 40 + s * 260;
-      ctx.fillStyle = "#e9e9ec";
-      ctx.beginPath();
-      ctx.ellipse(W / 2, H / 2, r * 0.72, r, 0, 0, Math.PI * 2);
-      ctx.fill();
-      // tentáculos irrumpiendo
-      ctx.strokeStyle = "#0a0a0d";
-      ctx.lineWidth = 6;
-      for (let i = 0; i < 8; i++) {
-        const a = (i / 8) * Math.PI * 2;
-        const jitter = Math.sin(t * 30 + i) * 20;
-        ctx.beginPath();
-        ctx.moveTo(W / 2, H / 2);
-        ctx.lineTo(W / 2 + Math.cos(a) * (r + 120 + jitter), H / 2 + Math.sin(a) * (r + 120 + jitter));
-        ctx.stroke();
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+      if (t < 1.4) {
+        const k = Math.min(1, t / 1.2);
+        Cinematic._slenderFace(ctx, W, H, 0.45 + k * k * 1.4, 0.15 + k * 0.35, Math.min(1, t * 3));
+        if (t > 0.9) {   // la imagen se rompe
+          const r = (t - 0.9) / 0.5;
+          for (let i = 0; i < 40 * r; i++) {
+            const v = Math.random() * 255 | 0;
+            ctx.fillStyle = `rgba(${v},${v},${v},0.85)`;
+            ctx.fillRect(Math.random() * W, Math.random() * H, 30 + Math.random() * 300, 2 + Math.random() * 8);
+          }
+        }
       }
-      ctx.lineWidth = 1;
-      // flash rojo
-      if (t < 0.3) {
-        ctx.fillStyle = `rgba(150,0,0,${0.6 - t})`;
-        ctx.fillRect(0, 0, W, H);
-      }
+      // Despues: negro y silencio
     },
   },
 ];
+
+// ---------------- Letrero de cinta entre capitulos ----------------
+// Estatica, sello de la cinta ("NOCHE 2 · 01:17 a.m."), titulo letra por letra y la voz de Alex.
+Cinematic.titleCard = function (o) {
+  return [{
+    caption: "",
+    hold: o.hold || 7,
+    voice: o.voice,
+    sfx: "glitch",
+    draw(ctx, t0, W, H, phase) {
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+      if (phase === "in") return;
+      const t = phase === "out" ? 99 : t0;
+      // Golpe de estatica al entrar
+      if (phase === "hold" && t < 0.45) {
+        for (let i = 0; i < 260; i++) {
+          const v = Math.random() * 255 | 0;
+          ctx.fillStyle = `rgba(${v},${v},${v},${0.9 - t * 2})`;
+          ctx.fillRect(Math.random() * W, Math.random() * H, 4 + Math.random() * 60, 2 + Math.random() * 4);
+        }
+      }
+      // Sello de la cinta
+      ctx.font = "16px Consolas, 'Courier New', monospace"; ctx.textAlign = "left";
+      ctx.fillStyle = "#c9cfd6";
+      ctx.fillText("\u25B6 PLAY", 40, 96);
+      if (Math.floor(t * 1.6) % 2 === 0) { ctx.fillStyle = "#c22"; ctx.beginPath(); ctx.arc(W - 106, 90, 6, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = "#c9cfd6"; ctx.textAlign = "right"; ctx.fillText("REC", W - 40, 96);
+      ctx.textAlign = "left"; ctx.fillText(o.stamp || "", 40, H - 84);
+      // Titulo letra por letra
+      const shown = Math.min(o.title.length, Math.floor(Math.max(0, t - 0.5) * 14));
+      ctx.font = "48px Georgia, 'Times New Roman', serif"; ctx.textAlign = "center";
+      ctx.fillStyle = "#e6e2d8";
+      const jx = Math.random() < 0.04 ? (Math.random() - 0.5) * 8 : 0;
+      ctx.fillText(o.title.slice(0, shown), W / 2 + jx, H * 0.45);
+      if (o.label) {
+        ctx.font = "13px Georgia, serif"; ctx.fillStyle = "#8d939b";
+        ctx.fillText(o.label.split("").join(" "), W / 2, H * 0.45 - 62);
+      }
+      // Texto debajo, aparece despues del titulo
+      const a = Math.max(0, Math.min(1, (t - 0.6 - o.title.length / 14) * 1.2));
+      if (a > 0 && o.text) {
+        ctx.globalAlpha = a; ctx.font = "italic 18px Georgia, serif"; ctx.fillStyle = "#b7bcc3";
+        o.text.split("\n").forEach((ln, i) => ctx.fillText(ln, W / 2, H * 0.45 + 50 + i * 28));
+        ctx.globalAlpha = 1;
+      }
+      ctx.textAlign = "left";
+      // Lineas de cinta
+      ctx.fillStyle = "rgba(255,255,255,0.025)";
+      for (let y = (t * 40) % 4; y < H; y += 4) ctx.fillRect(0, y, W, 1);
+    },
+  }];
+};
+

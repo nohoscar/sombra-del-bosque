@@ -86,19 +86,18 @@ window.addEventListener("load", () => {
   };
   refreshContinue();
 
+  // Hora que marca la cinta en cada capitulo
+  const STAMPS = ["MAR 17 NOV 1998  11:48 p.m.", "MIE 18 NOV 1998  12:31 a.m.", "MIE 18 NOV 1998  01:17 a.m.",
+    "MIE 18 NOV 1998  02:09 a.m.", "MIE 18 NOV 1998  03:33 a.m.", "MIE 18 NOV 1998  05:58 a.m."];
+
+  // Entre capitulos: narracion (si hay), luego el letrero de cinta, y el juego entra desde negro
   function showNightIntro(i) {
     const info = TDLevel.getInfo(i);
-    nightLabel.textContent = info.num === 0 ? "PROLOGO" : `NOCHE ${info.num} DE ${TDLevel.totalNights - 1}`;
-    nightTitle.textContent = info.name;
-    nightText.textContent = info.intro || "";
-    nightBtn.textContent = info.button || (info.num === 1 ? "ENTRAR AL BOSQUE" : "CONTINUAR");
-    show(nightScreen);
-    nightBtn.onclick = () => {
-      hide(nightScreen);
-      const inter = Cinematic.INTERLUDES[i];
-      if (inter) Cinematic.play(inter, () => game.beginNight(i));
-      else game.beginNight(i);
-    };
+    const card = Cinematic.titleCard({
+      label: info.num === 0 ? "PROLOGO" : `NOCHE ${info.num} DE ${TDLevel.totalNights - 1}`,
+      title: info.name, text: info.intro || "", stamp: STAMPS[i] || "", hold: 6,
+    });
+    Cinematic.play([...(Cinematic.INTERLUDES[i] || []), ...card], () => game.beginNight(i));
   }
 
   // Eventos del juego
@@ -115,14 +114,13 @@ window.addEventListener("load", () => {
   game.on("nightcomplete", (d) => {
     saveProgress(d.completed);
     const done = TDLevel.getInfo(d.completed - 1);
-    nightLabel.textContent = d.completed === 1 ? "PROLOGO" : "SOBREVIVISTE";
-    nightTitle.textContent = d.completed === 1 ? "Tommy no esta" : `${done.label} superada`;
-    nightText.textContent = done.outro || "El sol asoma un instante entre los arboles y vuelve a ocultarse.\nOtra noche cae. El bosque despierta, mas hambriento que antes.";
-    const ov = TDLevel._defs[d.completed - 1].outroVoice;
-    if (ov) setTimeout(() => Sound.playVoice(ov), 900);
-    nightBtn.textContent = "SIGUIENTE NOCHE";
-    show(nightScreen);
-    nightBtn.onclick = () => { hide(nightScreen); showNightIntro(d.completed); };
+    const card = Cinematic.titleCard({
+      label: d.completed === 1 ? "PROLOGO" : "SOBREVIVISTE",
+      title: d.completed === 1 ? "Tommy no esta" : `${done.label} superada`,
+      text: done.outro || "", stamp: "", hold: 6,
+      voice: TDLevel._defs[d.completed - 1].outroVoice,
+    });
+    Cinematic.play(card, () => showNightIntro(d.completed));
   });
   game.on("gameover", (d) => {
     Cinematic.play(Cinematic.DEATH, () => {
@@ -218,7 +216,27 @@ window.addEventListener("load", () => {
   }
   requestAnimationFrame(loop);
 
-  // Para probar: abrir con #prueba-1 empieza directo en esa noche (0 = prologo)
-  const m = /^#prueba-(\d)$/.exec(location.hash || "");
+  // Para probar: abrir con #prueba-1 empieza directo en esa noche (0 = prologo).
+  // #prueba-cabana entra a la ultima cabana; #prueba-esbelto lo pone frente a tu linterna;
+  // #prueba-letrero muestra el letrero de la Noche 2.
+  const h = location.hash || "";
+  const m = /^#prueba-(\d)$/.exec(h);
   if (m) { hide(startScreen); game.beginNight(Math.min(+m[1], TDLevel.totalNights - 1)); }
+  if (h === "#prueba-cabana") {
+    hide(startScreen); game.beginNight(2);
+    const cabs = TDLevel.props.filter((q) => q.kind === "cabana");
+    cabs.slice(0, 3).forEach((q) => (q.checked = true));
+    game.enterRoom(cabs[3]); game.player.flashlight = true; game.fadeIn = 0;
+  }
+  if (h === "#prueba-esbelto") {
+    hide(startScreen); game.beginNight(3); game.fadeIn = 0;
+    const p = game.player, s = game.slenders[0];
+    p.flashlight = true; p.fx = 1; p.fy = 0;
+    for (let d = 200; d > 90; d -= 10) if (!TDLevel.circleHitsWall(p.x + d, p.y, 14)) { s.x = p.x + d; s.y = p.y; break; }
+    s.state = "chase"; s.blinkCd = 999; s.stunCd = 999; s.speed = 0; s.vis = 1; game.faceCd = 999;
+  }
+  if (h === "#prueba-letrero") {
+    hide(startScreen);
+    Cinematic.play(Cinematic.titleCard({ label: "NOCHE 2 DE 5", title: "El Campamento", text: TDLevel._defs[2].intro, stamp: STAMPS[2] }), () => {});
+  }
 });

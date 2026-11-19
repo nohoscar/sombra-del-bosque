@@ -89,7 +89,7 @@ ok(fog && !TDLevel.circleHitsWall(fog.x + 60, fog.y, 18), "la fogata tiene espac
 { const s0 = TDLevel.tileAtPx(game.player.x, game.player.y), ft = TDLevel.tileAtPx(fog.x + 60, fog.y);
   ok(TDLevel.findPath(s0.c, s0.r, ft.c, ft.r) !== null, "hay camino a la fogata"); }
 step(120);
-game.slenders.forEach((s) => { s.x = 40; s.y = 40; s.speed = 0; });  // lejos, para probar el guion
+game.slenders.forEach((s) => { s.x = 40; s.y = 40; s.speed = 0; s.blinkCd = 1e9; });  // lejos, para probar el guion
 tp(fog.x + 120, fog.y); step(3); step(80);
 ok(Story.flags.cinta, "la cinta de la fogata suena al acercarse");
 for (let k = 0; k < 3; k++) { const n = TDLevel.notes[k]; tp(n.x, n.y); step(2); press("interact"); closeNote(); step(5); }
@@ -107,12 +107,33 @@ ok(game.state === "playing", `sigue jugando tras el susto (estado: ${game.state}
   for (const n of TDLevel.notes) n.collected = true;
   tp(TDLevel.exit.x, TDLevel.exit.y); step(2); press("interact");
   ok(game.state === "playing", "no puedes salir sin revisar las cabanas");
-  for (const cb of cabs) { tp(cb.door.x, cb.door.y); step(2); press("interact"); step(20); }
+  for (const [i, cb] of cabs.entries()) {
+    tp(cb.door.x, cb.door.y); step(2); press("interact"); step(2);
+    ok(!!TDLevel.room, `entras a la cabana ${i + 1}`);
+    ok(TDLevel.beds.length === (i === 3 ? 2 : 3), `  tiene ${TDLevel.beds.length} literas`);
+    const st = TDLevel.tileAtPx(game.player.x, game.player.y);
+    for (const b of TDLevel.beds) {
+      const t = TDLevel.tileAtPx(b.x, b.y);
+      ok(TDLevel.findPath(st.c, st.r, t.c, t.r) !== null && !TDLevel.circleHitsWall(b.x, b.y, 18), "  litera alcanzable");
+      tp(b.x, b.y); step(2); press("interact"); step(3);
+    }
+    if (i === 3) {
+      step(60 * 6);
+      ok(game.slenders.length === 1 && game.slenders[0].state === "chase", "en la ultima, el aparece adentro");
+      ok(game.state === "playing", "  y te da tiempo de huir");
+      game.slenders[0].speed = 0;
+    }
+    const ex = TDLevel.exit, s2 = TDLevel.tileAtPx(game.player.x, game.player.y), et = TDLevel.tileAtPx(ex.x, ex.y);
+    ok(TDLevel.findPath(s2.c, s2.r, et.c, et.r) !== null, "  la puerta del cuarto se alcanza");
+    tp(ex.x, ex.y); step(2); press("interact"); step(2);
+    ok(!TDLevel.room && cb.checked, "  sales y queda revisada");
+  }
   ok(cabs.every((q) => q.checked), "se revisan las 4 cabanas");
   step(60 * 7);
+  console.log("    debug:", game.state, "estatica", Math.round(game.static), "atrapado", game.slenders.map((s) => [s.caught, s.state, Math.round(Math.hypot(s.x - game.player.x, s.y - game.player.y))]));
   for (const b of TDLevel.batteries) { const bt = TDLevel.tileAtPx(b.x, b.y); ok(TDLevel.grid[bt.r][bt.c] === 0, "bateria fuera de las paredes"); }
   tp(TDLevel.exit.x, TDLevel.exit.y); step(2); press("interact");
-  ok(game.state === "nightcomplete", "con todo revisado, sales del campamento");
+  ok(game.state === "nightcomplete", `con todo revisado, sales del campamento (estado: ${game.state})`);
   game.beginNight(2);
   const s1 = TDLevel.tileAtPx(TDLevel.start.x, TDLevel.start.y);
   for (const n of TDLevel.notes) { const t = TDLevel.tileAtPx(n.x, n.y); ok(TDLevel.findPath(s1.c, s1.r, t.c, t.r) !== null, `nota en (${t.c},${t.r}) se alcanza`); }
@@ -132,6 +153,17 @@ console.log("\nEL ESBELTO");
   p.hidden = true; s.lastX = p.x; s.lastY = p.y; s.x = p.x + 20; s.y = p.y;
   s.update(1 / 60, p);
   ok(s.caught, "si te escondes frente a el, te encuentra");
+  // No lo miras: aparece mas cerca
+  p.hidden = false; s.caught = false; s.state = "chase"; s.stun = 0; s.blinkCd = 0;
+  let moved = 0;
+  for (let k = 0; k < 20 && !moved; k++) {
+    const a = Math.random() * Math.PI * 2; s.x = p.x + Math.cos(a) * 450; s.y = p.y + Math.sin(a) * 450;
+    if (TDLevel.circleHitsWall(s.x, s.y, 14)) continue;
+    const before = Math.hypot(s.x - p.x, s.y - p.y); s.blinkCd = 0;
+    if (s.blink(p, false, 1 / 60)) moved = before - Math.hypot(s.x - p.x, s.y - p.y);
+  }
+  ok(moved > 50, `si no lo miras, aparece mas cerca (${Math.round(moved)} px)`);
+  s.blinkCd = 0; ok(s.blink(p, true, 1 / 60) === null, "si lo miras, no se mueve de golpe");
 }
 ok(TDLevel.prints !== undefined, "datos de huellas listos");
 game.beginNight(1);
@@ -156,7 +188,7 @@ console.log("\nMENU");
 
 console.log("\nCINEMATICAS");
 const ctx = mkCanvas().getContext();
-for (const [name, sc] of [["OPENING", Cinematic.OPENING], ...Object.entries(Cinematic.INTERLUDES).map(([k, v]) => ["INTER " + k, v]), ["ENDING", Cinematic.ENDING]]) {
+for (const [name, sc] of [["OPENING", Cinematic.OPENING], ["LETRERO", Cinematic.titleCard({ title: "El Campamento", text: "linea", stamp: "01:17", label: "NOCHE 2" })], ["MUERTE", Cinematic.DEATH], ...Object.entries(Cinematic.INTERLUDES).map(([k, v]) => ["INTER " + k, v]), ["ENDING", Cinematic.ENDING]]) {
   let done = false; Cinematic.play(sc, () => (done = true));
   for (let i = 0; i < 60 * 60 && !done; i++) { Input.update(); Cinematic.update(1 / 60); Cinematic.draw(ctx, 1024, 576); }
   ok(done, `${name} termina`);

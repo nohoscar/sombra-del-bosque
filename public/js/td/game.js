@@ -39,6 +39,7 @@ class TDGame {
     this.ambient = TDLevel.ambient;
     this.subtitle = null; this.hintMsg = null; this.apparitions = [];
     this.lightFlicker = 0; this.proximity = 0;
+    this.fadeIn = 1.4; this._outside = null; this.faceFlash = 0; this.faceCd = 0;
     this.camX = Math.max(0, this.player.x - this.W / 2); this.camY = Math.max(0, this.player.y - this.H / 2);
     Sound.startAmbience();
     this.state = "playing";
@@ -85,20 +86,52 @@ class TDGame {
     for (const a of this.apparitions) { a.t -= dt; a.flicker += dt; }
     this.apparitions = this.apparitions.filter((a) => a.t > 0);
     if (this.lightFlicker > 0) this.lightFlicker -= dt;
+    if (this.fadeIn > 0) this.fadeIn -= dt;
 
     let rise = 0, anyChase = false, nearest = Infinity;
+    const lightOn = p.flashlight && !(this.lightFlicker > 0);
+    if (this.faceCd > 0) this.faceCd -= dt;
+    if (this.faceFlash > 0) this.faceFlash -= dt;
     for (const s of (this.dormant ? [] : this.slenders)) {
       s.update(dt, p);
       if (s.state === "chase") anyChase = true;
-      nearest = Math.min(nearest, Math.hypot(s.x - p.x, s.y - p.y));
-      if (!p.hidden && TDLevel.lineOfSight(p.x, p.y, s.x, s.y)) {
-        const dx = s.x - p.x, dy = s.y - p.y, dist = Math.hypot(dx, dy) || 1;
-        const ang = Math.acos(Math.max(-1, Math.min(1, (p.fx * dx + p.fy * dy) / dist)));
-        if (ang < 0.9 && dist < 440) rise = Math.max(rise, (1 - dist / 440) * 28);
+      const dx = s.x - p.x, dy = s.y - p.y, dist = Math.hypot(dx, dy) || 1;
+      nearest = Math.min(nearest, dist);
+      const los = TDLevel.lineOfSight(p.x, p.y, s.x, s.y);
+      const ang = Math.acos(Math.max(-1, Math.min(1, (p.fx * dx + p.fy * dy) / dist)));
+      const lit = lightOn && los && dist < 330 && ang < 0.5;
+      // Luz de fogata o foco encendido
+      const inFire = TDLevel.props.some((pr) => pr.lit && Math.hypot(s.x - pr.x, s.y - pr.y) < 160) ||
+        TDLevel.generators.some((g) => g.active && Math.hypot(s.x - g.x, s.y - g.y) < g.radius);
+      // Que tanto se ve: en lo oscuro casi nada; un chispazo cuando la estatica esta alta
+      let target = lit || (inFire && los) ? 1 : (los && dist < 115 ? 0.7 : 0.04);
+      if (target < 0.5 && los && this.static > 55 && Math.random() < 1.5 * dt) target = 0.6;
+      s.vis = (s.vis ?? 0) + (target - (s.vis ?? 0)) * Math.min(1, dt * (target > (s.vis ?? 0) ? 9 : 3));
+      s.closeness = Math.max(0, 1 - dist / 340);
+      const looking = los && ang < 0.75 && (s.vis > 0.3 || dist < 200);
+
+      // Aparece mas cerca cuando no lo miras
+      const jumped = s.blink ? s.blink(p, looking, dt) : null;
+      if (jumped) { s.vis = 0; if (jumped === "behind") s.behind = true; Sound.glitchBurst(0.12); }
+      // Volteas... y esta detras de ti
+      if (s.behind && looking && s.vis > 0.3) {
+        s.behind = false;
+        this.static = Math.min(100, this.static + 26);
+        Sound.hit();
+        if (!(this.faceCd > 0)) { this.faceFlash = 0.14; this.faceCd = 6; }
+      }
+      // Lo alumbras de cerca: ves su cara un instante
+      if (lit && dist < 175 && !(this.faceCd > 0)) {
+        this.faceFlash = 0.12; this.faceCd = 9;
+        Sound.hit();
+      }
+
+      if (!p.hidden && los) {
+        const vf = 0.35 + 0.65 * s.vis;   // si no lo ves bien, asusta menos
+        if (ang < 0.9 && dist < 440) rise = Math.max(rise, (1 - dist / 440) * 28 * vf);
         if (dist < 170) rise = Math.max(rise, 9);
-        // Si la linterna lo alcanza, se enfurece y carga hacia ti
         // La linterna lo congela un instante, pero gasta bateria de golpe
-        if (p.flashlight && !(this.lightFlicker > 0) && dist < 340 && ang < 0.55 && s.onLit()) {
+        if (lit && dist < 340 && ang < 0.55 && s.onLit()) {
           p.battery = Math.max(0, p.battery - 12);
           this._notify("La luz lo detiene... por ahora");
           Sound.glitchBurst();
@@ -131,7 +164,8 @@ class TDGame {
       for (const s of this.slenders) if (Math.hypot(s.x - g.x, s.y - g.y) < g.radius) s.fleeFrom(g.x, g.y, dt);
     }
 
-    if (anyChase) rise += 30;
+    // Que te persiga da miedo... pero sobre todo si esta cerca
+    if (anyChase && nearest < 300) rise += 4 + 18 * (1 - nearest / 300);
     const fm = (typeof Difficulty !== "undefined") ? Difficulty.get().fearMul : 1;
     rise *= fm;
     if (p.hidden) this.static -= 30 * dt;
@@ -162,12 +196,14 @@ class TDGame {
     if (this.slenders.some((s) => s.caught) || this.static >= 100) this._lose();
   }
 
-  _camera() {
+  _camera(snap) {
     const tx = this.player.x - this.W / 2, ty = this.player.y - this.H / 2;
-    this.camX += (tx - this.camX) * 0.12;
-    this.camY += (ty - this.camY) * 0.12;
-    this.camX = Math.max(0, Math.min(TDLevel.worldW - this.W, this.camX));
-    this.camY = Math.max(0, Math.min(TDLevel.worldH - this.H, this.camY));
+    const k = snap ? 1 : 0.12;
+    this.camX += (tx - this.camX) * k;
+    this.camY += (ty - this.camY) * k;
+    // Si el lugar es mas chico que la pantalla (un cuarto), queda centrado
+    this.camX = TDLevel.worldW < this.W ? (TDLevel.worldW - this.W) / 2 : Math.max(0, Math.min(TDLevel.worldW - this.W, this.camX));
+    this.camY = TDLevel.worldH < this.H ? (TDLevel.worldH - this.H) / 2 : Math.max(0, Math.min(TDLevel.worldH - this.H, this.camY));
   }
 
   _notify(m) { this.message = m; this.msgTimer = 0.5; }
@@ -231,21 +267,87 @@ class TDGame {
       else if (cg) this._notify("Manten E para encender el foco");
     }
 
-    // Cabanas: revisarlas desde la puerta
-    for (const pr of TDLevel.props) {
+    // Cabanas: se entra por la puerta
+    if (TDLevel.room) {
+      this._roomInteractions();
+    } else for (const pr of TDLevel.props) {
       if (pr.kind !== "cabana" || pr.checked || !pr.door) continue;
       if (Math.hypot(p.x - pr.door.x, p.y - pr.door.y) < 50) {
-        this._notify("E: revisar la cabana");
-        if (Input.wasPressed("interact")) { pr.checked = true; Sound.footstep(false); Story.onProp(this, pr); }
+        this._notify("E: entrar a la cabana");
+        if (Input.wasPressed("interact")) { this.enterRoom(pr); return; }
       }
     }
 
     const e = TDLevel.exit;
-    if (Math.hypot(p.x - e.x, p.y - e.y) < 44) {
+    if (!TDLevel.room && Math.hypot(p.x - e.x, p.y - e.y) < 44) {
       const block = Story.exitBlock(this);
       if (block) this._notify(block);
       else { this._notify(Story.exitPrompt()); if (Input.wasPressed("interact")) this._winNight(); }
     }
+  }
+
+  // ---- Cuartos (interior de las cabanas) ----
+  enterRoom(pr) {
+    const cabs = TDLevel.props.filter((q) => q.kind === "cabana");
+    const last = cabs.filter((q) => q.checked).length === cabs.length - 1;
+    this._outside = { lvl: TDLevel.snapshot(), slenders: this.slenders, prop: pr, last };
+    TDLevel.loadRoom(last ? TDLevel.ROOM_LAST : TDLevel.ROOM);
+    this.slenders = [];
+    const p = this.player;
+    p.x = TDLevel.start.x; p.y = TDLevel.start.y; p.fx = 0; p.fy = -1;
+    this.roomDone = false;
+    this.fadeIn = 0.7;
+    this._camera(true);
+    Sound.footstep(false);
+  }
+
+  exitRoom() {
+    const o = this._outside;
+    if (!o) return;
+    TDLevel.restore(o.lvl);
+    this.slenders = o.slenders;
+    const p = this.player;
+    p.x = o.prop.door.x; p.y = o.prop.door.y + 14; p.fx = 0; p.fy = 1;
+    this._outside = null;
+    this.fadeIn = 0.6;
+    // Al salir de la ultima, el ya te esta esperando afuera
+    if (o.last && this.slenders.length) {
+      const s = this.slenders[0];
+      for (let k = 0; k < 20; k++) {
+        const a = Math.random() * Math.PI * 2, x = p.x + Math.cos(a) * 320, y = p.y + Math.sin(a) * 320;
+        if (!TDLevel.circleHitsWall(x, y, 14)) { s.x = x; s.y = y; s._path = []; break; }
+      }
+      s.state = "suspicious"; s.detection = 70;
+    }
+    this._camera(true);
+  }
+
+  _roomInteractions() {
+    const p = this.player;
+    for (const b of TDLevel.beds) {
+      if (b.counted || Math.hypot(p.x - b.x, p.y - b.y) > 60) continue;
+      this._notify("E: contar la litera");
+      if (Input.wasPressed("interact")) {
+        b.counted = true; Sound.readTick();
+        if (TDLevel.beds.every((q) => q.counted) && !this.roomDone) {
+          this.roomDone = true;
+          this._outside.prop.checked = true;
+          Story.onProp(this, this._outside.prop);
+        }
+      }
+    }
+    const e = TDLevel.exit;
+    if (Math.hypot(p.x - e.x, p.y - e.y) < 48) {
+      if (!this.roomDone) this._notify("Cuenta las literas primero");
+      else { this._notify("E: salir de la cabana"); if (Input.wasPressed("interact")) this.exitRoom(); }
+    }
+  }
+
+  // Un Esbelto de verdad dentro del cuarto (guion)
+  spawnInRoom(x, y) {
+    const s = new TDSlender({ x, y, speed: 92, viewDist: 400, persistence: 1.2 });
+    s.x = x; s.y = y; s.state = "chase"; s.detection = 100; s.blinkCd = 999;
+    this.slenders = [s];
   }
 
   resumeFromNote() { if (this.state === "note") this.state = "playing"; }
@@ -268,13 +370,14 @@ class TDGame {
     ctx.save();
     ctx.translate(-Math.round(this.camX), -Math.round(this.camY));
     this._drawGround(ctx);
-    if (!this.dormant) this.slenders.forEach((s) => s.drawCone(ctx));
     this._drawSprites(ctx);
     ctx.restore();
     // Tinte de ambiente de la noche
     if (this.ambient) { ctx.fillStyle = this.ambient.tint; ctx.fillRect(0, 0, W, H); }
     this._drawLighting(ctx);
+    if (this.faceFlash > 0) this._drawFace(ctx);
     this._drawHUD(ctx);
+    if (this.fadeIn > 0) { ctx.fillStyle = `rgba(0,0,0,${Math.min(1, this.fadeIn / 1.4)})`; ctx.fillRect(0, 0, W, H); }
   }
 
   _visibleTiles() {
@@ -304,6 +407,16 @@ class TDGame {
             ctx.fillStyle = "rgba(0,0,0,0.22)";
             ctx.fillRect(x, y + T - 2, T, 2);
             ctx.fillRect(x + ((r * 23) % T), y, 2, T);
+            if (ch === "e") {
+              // Donde estaba la litera que falta: marcas en el piso
+              ctx.strokeStyle = "rgba(200,190,170,0.18)"; ctx.setLineDash([5, 5]);
+              ctx.strokeRect(x + 4, y + 2, T - 8, T - 4); ctx.setLineDash([]);
+            }
+            if (ch === "X") {
+              const gl = ctx.createLinearGradient(x, y + T, x, y);
+              gl.addColorStop(0, "rgba(120,140,190,0.25)"); gl.addColorStop(1, "rgba(120,140,190,0)");
+              ctx.fillStyle = gl; ctx.fillRect(x, y, T, T);
+            }
           }
           continue;
         }
@@ -328,6 +441,12 @@ class TDGame {
       ctx.fillStyle = grad;
       ctx.beginPath(); ctx.arc(g.x, g.y, g.radius, 0, Math.PI * 2); ctx.fill();
     }
+  }
+
+  // Su cara, un instante, encima de todo
+  _drawFace(ctx) {
+    const k = Math.max(0, this.faceFlash / 0.14);
+    Cinematic._slenderFace(ctx, this.W, this.H, 1.05, 0.3, Math.min(1, k * 1.4));
   }
 
   // Sendero de tierra y huellas (Noche 1)
@@ -640,7 +759,7 @@ class TDGame {
 
     ctx.fillStyle = "#dfe6df"; ctx.font = "16px 'Trebuchet MS', sans-serif"; ctx.textAlign = "right";
     const got = TDLevel.notes.filter((n) => n.collected).length;
-    ctx.fillText(`${story ? "Pistas" : "Notas"}: ${got}/${TDLevel.notes.length}`, this.W - 20, 32);
+    if (!TDLevel.room) ctx.fillText(`${story ? "Pistas" : "Notas"}: ${got}/${TDLevel.notes.length}`, this.W - 20, 32);
     if (TDLevel.generators.length) ctx.fillText(`Focos: ${this.genCharges}`, this.W - 20, 54);
     if (!story || this.player.battery > 0) ctx.fillText(`Linterna: ${this.player.flashlight ? "ON" : "OFF"}`, this.W - 20, TDLevel.generators.length ? 76 : 54);
     ctx.textAlign = "left";

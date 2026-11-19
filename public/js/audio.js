@@ -218,17 +218,18 @@ const Sound = {
     this.stopAmbience();
   },
   // Chispazo corto de estatica
-  glitchBurst() {
+  glitchBurst(vol) {
+    const V = vol ?? 1;
     if (!this.started) return;
     const t = this.ctx.currentTime;
     const s = this.ctx.createBufferSource(); s.buffer = this._noiseBuf;
     const bp = this.ctx.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 2400; bp.Q.value = 0.6;
     const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.32 * V + 0.0002, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
     s.connect(bp); bp.connect(g); g.connect(this.master); s.start(t, Math.random()); s.stop(t + 0.4);
     const o = this.ctx.createOscillator(), og = this.ctx.createGain();
     o.type = "sine"; o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.5);
-    og.gain.setValueAtTime(0.3, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    og.gain.setValueAtTime(0.3 * V + 0.0002, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
     o.connect(og); og.connect(this.master); o.start(t); o.stop(t + 0.65);
   },
 
@@ -272,6 +273,10 @@ const Sound = {
     const bo = ctx.createOscillator(); bo.type = "square"; bo.frequency.value = 60;
     const bb = ctx.createBiquadFilter(); bb.type = "bandpass"; bb.frequency.value = 180; bb.Q.value = 3;
     bo.connect(bb); bb.connect(this._buzz); this._buzz.connect(this.master); bo.start();
+    // Zumbido grave que sube mientras se acerca (se siente mas que se oye)
+    this._sub = ctx.createGain(); this._sub.gain.value = 0;
+    [36, 36.7].forEach((f) => { const o2 = ctx.createOscillator(); o2.type = "sine"; o2.frequency.value = f; o2.connect(this._sub); o2.start(); });
+    this._sub.connect(this.master);
 
     this._music = "off"; this._chase = 0; this._nextDrum = 0; this._drumStep = 0;
     this._nextWhisper = ctx.currentTime + 20;
@@ -298,6 +303,7 @@ const Sound = {
     // Interferencia que tartamudea, no un tono limpio
     const jitter = this._prox > 0.2 && Math.random() < 0.3 ? 0 : 1;
     this._buzz.gain.setTargetAtTime(this._prox * this._prox * 0.035 * jitter, this.ctx.currentTime, 0.03);
+    if (this._sub) this._sub.gain.setTargetAtTime(this._prox * this._prox * 0.22, this.ctx.currentTime, 0.4);
   },
 
   // Silencio total un instante antes de un susto
